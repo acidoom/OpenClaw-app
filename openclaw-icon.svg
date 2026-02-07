@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="#141211"/>
+  
+  <!-- Subtle gradient overlay -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="45%" r="50%">
+      <stop offset="0%" stop-color="#D97366" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#141211" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#glow)"/>
+  
+  <!-- Lobster Body -->
+  <g transform="translate(512, 520)">
+    <!-- Main body -->
+    <ellipse cx="0" cy="50" rx="140" ry="100" fill="#D97366"/>
+    <ellipse cx="0" cy="50" rx="120" ry="85" fill="#E68C59"/>
+    
+    <!-- Tail segments -->
+    <ellipse cx="0" cy="160" rx="100" ry="50" fill="#D97366"/>
+    <ellipse cx="0" cy="200" rx="80" ry="40" fill="#C96356"/>
+    <ellipse cx="0" cy="235" rx="60" ry="30" fill="#B95346"/>
+    <path d="M-50 250 Q0 300 50 250" fill="#D97366" stroke="#B95346" stroke-width="3"/>
+    
+    <!-- Head -->
+    <ellipse cx="0" cy="-30" rx="100" ry="80" fill="#D97366"/>
+    <ellipse cx="0" cy="-20" rx="85" ry="65" fill="#E68C59"/>
+    
+    <!-- Eyes -->
+    <circle cx="-35" cy="-60" r="25" fill="#141211"/>
+    <circle cx="35" cy="-60" r="25" fill="#141211"/>
+    <circle cx="-30" cy="-65" r="10" fill="#FFFFFF"/>
+    <circle cx="40" cy="-65" r="10" fill="#FFFFFF"/>
+    
+    <!-- Antennae -->
+    <path d="M-30 -100 Q-60 -180 -40 -220" stroke="#D97366" stroke-width="8" fill="none" stroke-linecap="round"/>
+    <path d="M30 -100 Q60 -180 40 -220" stroke="#D97366" stroke-width="8" fill="none" stroke-linecap="round"/>
+    <circle cx="-40" cy="-220" r="10" fill="#E68C59"/>
+    <circle cx="40" cy="-220" r="10" fill="#E68C59"/>
+    
+    <!-- Left Claw -->
+    <g transform="translate(-180, -20) rotate(-30)">
+      <ellipse cx="0" cy="0" rx="60" ry="35" fill="#D97366"/>
+      <path d="M30 -25 Q80 -40 100 0 Q80 40 30 25" fill="#D97366" stroke="#C96356" stroke-width="3"/>
+      <path d="M30 -15 Q70 -25 85 0 Q70 25 30 15" fill="#E68C59"/>
+    </g>
+    
+    <!-- Right Claw -->
+    <g transform="translate(180, -20) rotate(30)">
+      <ellipse cx="0" cy="0" rx="60" ry="35" fill="#D97366"/>
+      <path d="M-30 -25 Q-80 -40 -100 0 Q-80 40 -30 25" fill="#D97366" stroke="#C96356" stroke-width="3"/>
+      <path d="M-30 -15 Q-70 -25 -85 0 Q-70 25 -30 15" fill="#E68C59"/>
+    </g>
+    
+    <!-- Legs -->
+    <path d="M-100 80 Q-150 100 -170 130" stroke="#D97366" stroke-width="12" fill="none" stroke-linecap="round"/>
+    <path d="M-90 110 Q-140 130 -160 160" stroke="#D97366" stroke-width="10" fill="none" stroke-linecap="round"/>
+    <path d="M100 80 Q150 100 170 130" stroke="#D97366" stroke-width="12" fill="none" stroke-linecap="round"/>
+    <path d="M90 110 Q140 130 160 160" stroke="#D97366" stroke-width="10" fill="none" stroke-linecap="round"/>
+    
+    <!-- Smile -->
+    <path d="M-25 0 Q0 25 25 0" stroke="#141211" stroke-width="6" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>
