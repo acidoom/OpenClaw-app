@@ -189,6 +189,3 @@ struct SessionDetailView: View {
     }
 }
 
-// MARK: - Identifiable conformance for sheet binding
-
-extension ConversationSession: @retroactive Identifiable {}
