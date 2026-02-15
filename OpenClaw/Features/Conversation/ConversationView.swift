@@ -10,6 +10,7 @@ import SwiftUI
 struct ConversationView: View {
     @StateObject private var viewModel = ConversationViewModel()
     @EnvironmentObject private var appState: AppState
+    @State private var showHistory = false
     
     var body: some View {
         NavigationStack {
@@ -51,25 +52,29 @@ struct ConversationView: View {
                         isNetworkAvailable: viewModel.isNetworkAvailable
                     )
                     
-                    // Message transcript
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 16) {
-                                ForEach(viewModel.messages) { message in
-                                    MessageBubbleView(message: message)
-                                        .id(message.id)
+                    // Message transcript (respects showTranscript preference)
+                    if viewModel.showTranscript {
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                LazyVStack(alignment: .leading, spacing: 16) {
+                                    ForEach(viewModel.messages) { message in
+                                        MessageBubbleView(message: message)
+                                            .id(message.id)
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 16)
+                            }
+                            .onChange(of: viewModel.messages.count) { _, _ in
+                                if let lastMessage = viewModel.messages.last {
+                                    withAnimation(.easeOut(duration: 0.3)) {
+                                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                                    }
                                 }
                             }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 16)
                         }
-                        .onChange(of: viewModel.messages.count) { _, _ in
-                            if let lastMessage = viewModel.messages.last {
-                                withAnimation(.easeOut(duration: 0.3)) {
-                                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                                }
-                            }
-                        }
+                    } else {
+                        Spacer()
                     }
                     
                     // Voice orb and controls - immersive design without container
@@ -145,6 +150,16 @@ struct ConversationView: View {
             .toolbarBackground(Color.backgroundDark, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showHistory = true
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .foregroundColor(.textSecondary)
+                            .font(.system(size: 16, weight: .medium))
+                    }
+                    .accessibilityLabel("Conversation history")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         viewModel.showSettings = true
@@ -159,7 +174,13 @@ struct ConversationView: View {
             .sheet(isPresented: $viewModel.showSettings) {
                 SettingsView()
             }
+            .sheet(isPresented: $showHistory) {
+                HistoryView()
+            }
             .alert("Error", isPresented: $viewModel.showError) {
+                Button("Retry") {
+                    Task { await viewModel.retryConnection() }
+                }
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(viewModel.errorMessage ?? "An unknown error occurred")
@@ -179,11 +200,11 @@ struct ConversationView: View {
                 }
             }
             .onAppear {
-                // Handle any pending action when view appears
                 if let action = appState.pendingAction {
                     viewModel.handleDeepLinkAction(action)
                     appState.clearPendingAction()
                 }
+                viewModel.onAppear()
             }
         }
         .preferredColorScheme(.dark)

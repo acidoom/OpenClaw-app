@@ -6,8 +6,10 @@
  */
 
 import * as fs from "fs";
+import * as path from "path";
 import * as crypto from "crypto";
 import * as http2 from "http2";
+import * as os from "os";
 
 export interface ApnsConfig {
   keyPath: string;
@@ -54,6 +56,7 @@ export class ApnsNotifier {
   private cachedToken: string | null = null;
   private tokenExpiry: number = 0;
   private devices: Map<string, RegisteredDevice> = new Map();
+  private deviceStorePath: string;
 
   constructor(config: ApnsConfig) {
     this.keyPath = config.keyPath;
@@ -61,11 +64,17 @@ export class ApnsNotifier {
     this.teamId = config.teamId;
     this.bundleId = config.bundleId;
     this.sandbox = config.sandbox ?? true;
+
+    // Persist devices to ~/.openclaw/devices.json
+    const dataDir = path.join(os.homedir(), ".openclaw");
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    this.deviceStorePath = path.join(dataDir, "devices.json");
+    this.loadDevices();
+
     console.log(
-      "[ApnsNotifier] Initialized with bundleId:",
-      this.bundleId,
-      "sandbox:",
-      this.sandbox
+      `[ApnsNotifier] Initialized: bundleId=${this.bundleId} sandbox=${this.sandbox} devices=${this.devices.size}`
     );
   }
 
@@ -93,6 +102,7 @@ export class ApnsNotifier {
       registeredAt: existing?.registeredAt ?? now,
       lastSeenAt: now,
     });
+    this.saveDevices();
     console.log(
       `[ApnsNotifier] Device registered: ${token.substring(0, 8)}... (total: ${this.devices.size})`
     );
@@ -101,6 +111,7 @@ export class ApnsNotifier {
   unregisterDevice(token: string): boolean {
     const removed = this.devices.delete(token);
     if (removed) {
+      this.saveDevices();
       console.log(
         `[ApnsNotifier] Device unregistered: ${token.substring(0, 8)}... (total: ${this.devices.size})`
       );
@@ -250,6 +261,44 @@ export class ApnsNotifier {
       category: "OPENCLAW_MESSAGE",
       data: { type: "start_conversation" },
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Device Persistence
+  // ---------------------------------------------------------------------------
+
+  private saveDevices(): void {
+    try {
+      const data = Array.from(this.devices.values()).map((d) => ({
+        ...d,
+        registeredAt: d.registeredAt.toISOString(),
+        lastSeenAt: d.lastSeenAt.toISOString(),
+      }));
+      fs.writeFileSync(this.deviceStorePath, JSON.stringify(data, null, 2));
+    } catch (err) {
+      console.error("[ApnsNotifier] Failed to save devices:", err);
+    }
+  }
+
+  private loadDevices(): void {
+    try {
+      if (!fs.existsSync(this.deviceStorePath)) return;
+      const raw = fs.readFileSync(this.deviceStorePath, "utf8");
+      const data = JSON.parse(raw) as Array<Record<string, unknown>>;
+      for (const d of data) {
+        this.devices.set(d.token as string, {
+          token: d.token as string,
+          deviceName: d.deviceName as string | undefined,
+          deviceModel: d.deviceModel as string | undefined,
+          osVersion: d.osVersion as string | undefined,
+          appVersion: d.appVersion as string | undefined,
+          registeredAt: new Date(d.registeredAt as string),
+          lastSeenAt: new Date(d.lastSeenAt as string),
+        });
+      }
+    } catch (err) {
+      console.error("[ApnsNotifier] Failed to load devices:", err);
+    }
   }
 
   // ---------------------------------------------------------------------------
