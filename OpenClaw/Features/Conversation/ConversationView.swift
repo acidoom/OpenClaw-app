@@ -10,6 +10,7 @@ import SwiftUI
 struct ConversationView: View {
     @StateObject private var viewModel = ConversationViewModel()
     @EnvironmentObject private var appState: AppState
+    @State private var showHistory = false
     
     var body: some View {
         NavigationStack {
@@ -38,6 +39,7 @@ struct ConversationView: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 320)
                         .opacity(0.35)
+                        .accessibilityHidden(true)
                     Spacer()
                 }
                 .ignoresSafeArea()
@@ -50,25 +52,29 @@ struct ConversationView: View {
                         isNetworkAvailable: viewModel.isNetworkAvailable
                     )
                     
-                    // Message transcript
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 16) {
-                                ForEach(viewModel.messages) { message in
-                                    MessageBubbleView(message: message)
-                                        .id(message.id)
+                    // Message transcript (respects showTranscript preference)
+                    if viewModel.showTranscript {
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                LazyVStack(alignment: .leading, spacing: 16) {
+                                    ForEach(viewModel.messages) { message in
+                                        MessageBubbleView(message: message)
+                                            .id(message.id)
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 16)
+                            }
+                            .onChange(of: viewModel.messages.count) { _, _ in
+                                if let lastMessage = viewModel.messages.last {
+                                    withAnimation(.easeOut(duration: 0.3)) {
+                                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                                    }
                                 }
                             }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 16)
                         }
-                        .onChange(of: viewModel.messages.count) { _, _ in
-                            if let lastMessage = viewModel.messages.last {
-                                withAnimation(.easeOut(duration: 0.3)) {
-                                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                                }
-                            }
-                        }
+                    } else {
+                        Spacer()
                     }
                     
                     // Voice orb and controls - immersive design without container
@@ -95,6 +101,8 @@ struct ConversationView: View {
                             ) {
                                 viewModel.toggleTextInput()
                             }
+                            .accessibilityLabel("Toggle text input")
+                            .accessibilityHint("Switch between voice and text input")
                             
                             // Main action button
                             MainActionButton(
@@ -118,6 +126,7 @@ struct ConversationView: View {
                             ) {
                                 Task { await viewModel.toggleMute() }
                             }
+                            .accessibilityLabel(viewModel.isMuted ? "Unmute microphone" : "Mute microphone")
                         }
                         
                         // Optional text input
@@ -141,6 +150,16 @@ struct ConversationView: View {
             .toolbarBackground(Color.backgroundDark, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showHistory = true
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .foregroundColor(.textSecondary)
+                            .font(.system(size: 16, weight: .medium))
+                    }
+                    .accessibilityLabel("Conversation history")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         viewModel.showSettings = true
@@ -149,12 +168,19 @@ struct ConversationView: View {
                             .foregroundColor(.textSecondary)
                             .font(.system(size: 18, weight: .medium))
                     }
+                    .accessibilityLabel("Settings")
                 }
             }
             .sheet(isPresented: $viewModel.showSettings) {
                 SettingsView()
             }
+            .sheet(isPresented: $showHistory) {
+                HistoryView()
+            }
             .alert("Error", isPresented: $viewModel.showError) {
+                Button("Retry") {
+                    Task { await viewModel.retryConnection() }
+                }
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(viewModel.errorMessage ?? "An unknown error occurred")
@@ -174,11 +200,11 @@ struct ConversationView: View {
                 }
             }
             .onAppear {
-                // Handle any pending action when view appears
                 if let action = appState.pendingAction {
                     viewModel.handleDeepLinkAction(action)
                     appState.clearPendingAction()
                 }
+                viewModel.onAppear()
             }
         }
         .preferredColorScheme(.dark)
@@ -322,8 +348,9 @@ struct MainActionButton: View {
         .disabled(isConnecting)
         .scaleEffect(isConnecting ? 0.95 : 1.0)
         .animation(.easeInOut(duration: 0.2), value: isConnecting)
+        .accessibilityLabel(isConnecting ? "Connecting" : isConnected ? "End conversation" : "Start conversation")
     }
-    
+
     private var buttonColor: Color {
         if isConnecting {
             return .anthropicOrange
@@ -354,6 +381,7 @@ struct TextInputBar: View {
                     .foregroundColor(text.isEmpty ? .textTertiary : .anthropicCoral)
             }
             .disabled(text.isEmpty)
+            .accessibilityLabel("Send message")
         }
         .padding(.top, 12)
     }

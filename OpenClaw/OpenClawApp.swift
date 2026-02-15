@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import UIKit
 
 @main
@@ -13,7 +14,7 @@ struct OpenClawApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppState.shared
     @StateObject private var pushManager = PushNotificationManager.shared
-    
+
     var body: some Scene {
         WindowGroup {
             Group {
@@ -23,6 +24,7 @@ struct OpenClawApp: App {
                     OnboardingView()
                 }
             }
+            .modelContainer(ConversationHistoryStore.shared.container)
             .environmentObject(appState)
             .environmentObject(pushManager)
             .task {

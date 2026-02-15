@@ -15,7 +15,7 @@ enum AppConversationState: Equatable {
     case active
     case ended(String)
     case error(String)
-    
+
     static func == (lhs: AppConversationState, rhs: AppConversationState) -> Bool {
         switch (lhs, rhs) {
         case (.idle, .idle), (.connecting, .connecting), (.active, .active):
@@ -33,148 +33,138 @@ enum AppConversationState: Equatable {
 @MainActor
 final class ConversationManager: ObservableObject {
     static let shared = ConversationManager()
-    
+
     @Published private(set) var conversation: Conversation?
-    
+
     @Published private(set) var state: AppConversationState = .idle
     @Published private(set) var messages: [ConversationMessage] = []
     @Published private(set) var agentState: AgentMode = .listening
     @Published private(set) var isMuted: Bool = false
-    
+    @Published private(set) var lastError: String?
+
     private var cancellables = Set<AnyCancellable>()
     private let keychainManager = KeychainManager.shared
-    private let audioSessionManager = AudioSessionManager.shared
-    
+    private let historyStore = ConversationHistoryStore.shared
+    private var previousMessageCount = 0
+
     private init() {}
-    
+
     // MARK: - Public Methods
-    
-    /// Start a conversation with a public agent (using agent ID only)
+
     func startConversation() async throws {
         guard state == .idle || state.isEndedOrError else {
-            print("[OpenClaw] Already in state: \(state), skipping")
+            Log.debug("Already in state: \(state), skipping")
             return
         }
-        
+
         state = .connecting
-        print("[OpenClaw] State: connecting")
-        
-        // Note: Let the ElevenLabs SDK manage the audio session
-        // Our custom configuration can conflict with LiveKit's AudioManager
-        
+        Log.info("Connecting to public agent")
+
         let agentId: String
         do {
             agentId = try keychainManager.getAgentId()
-            print("[OpenClaw] Got agent ID: \(agentId.prefix(8))...")
         } catch {
             state = .error("Agent ID not configured")
-            print("[OpenClaw] Error: Agent ID not configured")
+            Log.error("Agent ID not configured")
             throw error
         }
-        
+
         do {
-            print("[OpenClaw] Calling ElevenLabs.startConversation...")
             let config = ConversationConfig()
             conversation = try await ElevenLabs.startConversation(
                 agentId: agentId,
                 config: config
             )
-            print("[OpenClaw] Conversation started, setting up bindings")
             setupConversationBindings()
+            _ = historyStore.startSession(isPrivateAgent: false)
+            previousMessageCount = 0
             state = .active
-            print("[OpenClaw] State: active")
+            Log.info("Public conversation active")
         } catch {
             state = .error("Connection failed: \(error.localizedDescription)")
-            print("[OpenClaw] Connection failed: \(error)")
+            Log.error("Connection failed: \(error.localizedDescription)")
             throw error
         }
     }
-    
-    /// Start a conversation with a private agent (using conversation token)
+
     func startPrivateConversation() async throws {
-        print("[OpenClaw] startPrivateConversation() called")
         guard state == .idle || state.isEndedOrError else {
-            print("[OpenClaw] Already in state: \(state), skipping private")
+            Log.debug("Already in state: \(state), skipping private")
             return
         }
-        
+
         state = .connecting
-        print("[OpenClaw] State: connecting (private)")
-        
-        // Note: Let the ElevenLabs SDK manage the audio session
-        // Our custom configuration can conflict with LiveKit's AudioManager
-        
+        Log.info("Connecting to private agent")
+
         let agentId: String
         let apiKey: String
-        
+
         do {
             agentId = try keychainManager.getAgentId()
             apiKey = try keychainManager.getElevenLabsApiKey()
-            print("[OpenClaw] Got credentials - Agent: \(agentId.prefix(8))..., API Key: \(apiKey.prefix(8))...")
         } catch {
-            print("[OpenClaw] Credentials error: \(error)")
             state = .error("Credentials not configured")
+            Log.error("Credentials not configured")
             throw error
         }
-        
+
         do {
-            print("[OpenClaw] Fetching conversation token...")
             let token = try await TokenService.shared.fetchToken(agentId: agentId, apiKey: apiKey)
-            print("[OpenClaw] Got token: \(token.prefix(50))...")
-            
+
             let config = ConversationConfig()
-            print("[OpenClaw] Starting conversation with token...")
-            // Use the conversationToken method for private agents
             conversation = try await ElevenLabs.startConversation(
                 conversationToken: token,
                 config: config
             )
             setupConversationBindings()
+            _ = historyStore.startSession(isPrivateAgent: true)
+            previousMessageCount = 0
             state = .active
-            print("[OpenClaw] Private conversation active!")
+            Log.info("Private conversation active")
         } catch {
-            print("[OpenClaw] Private connection failed: \(error)")
             state = .error("Connection failed: \(error.localizedDescription)")
+            Log.error("Private connection failed: \(error.localizedDescription)")
             throw error
         }
     }
-    
+
     func endConversation() async {
+        historyStore.endSession()
         await conversation?.endConversation()
         conversation = nil
         cancellables.removeAll()
         messages = []
         agentState = .listening
         isMuted = false
+        previousMessageCount = 0
         state = .idle
     }
-    
-    func toggleMute() async {
+
+    func toggleMute() async throws {
         guard let conversation else { return }
-        try? await conversation.toggleMute()
+        try await conversation.toggleMute()
         isMuted = conversation.isMuted
     }
-    
-    func sendTextMessage(_ text: String) async {
+
+    func sendTextMessage(_ text: String) async throws {
         guard let conversation else { return }
-        try? await conversation.sendMessage(text)
+        try await conversation.sendMessage(text)
     }
-    
+
     // MARK: - Private Methods
-    
+
     private func setupConversationBindings() {
         guard let conversation else { return }
-        
-        // Observe conversation state
+
         conversation.$state
             .receive(on: DispatchQueue.main)
             .sink { [weak self] sdkState in
-                print("[OpenClaw] SDK state changed: \(sdkState)")
                 switch sdkState {
                 case .active:
                     self?.state = .active
                 case .ended(let reason):
                     self?.state = .ended("\(reason)")
+                    self?.historyStore.endSession()
                 case .error(let err):
                     self?.state = .error(err.localizedDescription)
                 case .idle:
@@ -182,46 +172,51 @@ final class ConversationManager: ObservableObject {
                 case .connecting:
                     self?.state = .connecting
                 @unknown default:
-                    print("[OpenClaw] Unknown SDK state")
+                    Log.debug("Unknown SDK state")
                     break
                 }
             }
             .store(in: &cancellables)
-        
-        // Observe messages - deduplicate by content + role
+
         conversation.$messages
             .receive(on: DispatchQueue.main)
             .sink { [weak self] sdkMessages in
-                print("[OpenClaw] ========== Messages Update ==========")
-                print("[OpenClaw] Raw SDK messages: \(sdkMessages.count)")
-                for (i, msg) in sdkMessages.enumerated() {
-                    print("[OpenClaw] [\(i)] id=\(msg.id) role=\(msg.role) content=\"\(msg.content.prefix(30))...\"")
-                }
-                
-                // Deduplicate by content + role combination
-                var seen = Set<String>()
+                guard let self else { return }
+
+                var seenIds = Set<String>()
+                var seenContent = Set<String>()
                 var uniqueMessages: [ConversationMessage] = []
-                
+
                 for msg in sdkMessages {
-                    let key = "\(msg.role)-\(msg.content)"
-                    if !seen.contains(key) {
-                        seen.insert(key)
-                        uniqueMessages.append(ConversationMessage(
-                            id: msg.id,
-                            source: msg.role == .user ? .user : .ai,
-                            message: msg.content
-                        ))
-                    } else {
-                        print("[OpenClaw] SKIPPED duplicate: \(msg.content.prefix(30))...")
+                    guard seenIds.insert(msg.id).inserted else { continue }
+
+                    let contentKey = "\(msg.role)-\(msg.content)"
+                    guard seenContent.insert(contentKey).inserted else {
+                        Log.debug("Skipped duplicate message: \(msg.content.prefix(30))...")
+                        continue
                     }
+
+                    let source: MessageSource = msg.role == .user ? .user : .ai
+                    uniqueMessages.append(ConversationMessage(
+                        id: msg.id,
+                        source: source,
+                        message: msg.content
+                    ))
                 }
-                
-                print("[OpenClaw] Unique messages: \(uniqueMessages.count)")
-                self?.messages = uniqueMessages
+
+                // Persist only new messages
+                if uniqueMessages.count > self.previousMessageCount {
+                    for i in self.previousMessageCount..<uniqueMessages.count {
+                        let msg = uniqueMessages[i]
+                        self.historyStore.addMessage(source: msg.source, content: msg.message)
+                    }
+                    self.previousMessageCount = uniqueMessages.count
+                }
+
+                self.messages = uniqueMessages
             }
             .store(in: &cancellables)
-        
-        // Observe agent state
+
         conversation.$agentState
             .receive(on: DispatchQueue.main)
             .sink { [weak self] sdkAgentState in
@@ -237,12 +232,10 @@ final class ConversationManager: ObservableObject {
                 }
             }
             .store(in: &cancellables)
-        
-        // Observe mute state
+
         conversation.$isMuted
             .receive(on: DispatchQueue.main)
             .sink { [weak self] muted in
-                print("[OpenClaw] Mute state changed: \(muted)")
                 self?.isMuted = muted
             }
             .store(in: &cancellables)
