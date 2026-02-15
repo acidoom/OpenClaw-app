@@ -40,7 +40,6 @@ final class ConversationManager: ObservableObject {
     @Published private(set) var messages: [ConversationMessage] = []
     @Published private(set) var agentState: AgentMode = .listening
     @Published private(set) var isMuted: Bool = false
-    @Published private(set) var lastError: String?
 
     private var cancellables = Set<AnyCancellable>()
     private let keychainManager = KeychainManager.shared

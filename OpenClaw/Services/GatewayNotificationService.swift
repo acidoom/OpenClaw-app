@@ -75,17 +75,19 @@ actor GatewayNotificationService {
                         lastRegisteredToken = token
                         isRegistered = true
                         return
-                    } else {
-                        Log.error("Gateway: registration failed HTTP \(httpResponse.statusCode)")
+                    }
+                    let retryable = [429, 500, 502, 503].contains(httpResponse.statusCode)
+                    Log.error("Gateway: registration failed HTTP \(httpResponse.statusCode)")
+                    if !retryable {
+                        return
                     }
                 }
-                return // non-retryable HTTP error
             } catch {
                 Log.error("Gateway: registration error (attempt \(attempt + 1)): \(error.localizedDescription)")
-                if attempt < maxRetries - 1 {
-                    let delay = UInt64(pow(2.0, Double(attempt))) * 1_000_000_000
-                    try? await Task.sleep(nanoseconds: delay)
-                }
+            }
+            if attempt < maxRetries - 1 {
+                let delay = UInt64(pow(2.0, Double(attempt))) * 1_000_000_000
+                try? await Task.sleep(nanoseconds: delay)
             }
         }
     }

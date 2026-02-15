@@ -223,6 +223,8 @@ final class ConversationViewModel: ObservableObject {
     private func awaitConnection(timeout: TimeInterval = 10) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while !isConnected && Date() < deadline {
+            if case .error = state { return false }
+            if case .ended = state { return false }
             try? await Task.sleep(nanoseconds: 200_000_000)
         }
         return isConnected
