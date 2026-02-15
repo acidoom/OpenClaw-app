@@ -38,6 +38,7 @@ struct ConversationView: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 320)
                         .opacity(0.35)
+                        .accessibilityHidden(true)
                     Spacer()
                 }
                 .ignoresSafeArea()
@@ -95,6 +96,8 @@ struct ConversationView: View {
                             ) {
                                 viewModel.toggleTextInput()
                             }
+                            .accessibilityLabel("Toggle text input")
+                            .accessibilityHint("Switch between voice and text input")
                             
                             // Main action button
                             MainActionButton(
@@ -118,6 +121,7 @@ struct ConversationView: View {
                             ) {
                                 Task { await viewModel.toggleMute() }
                             }
+                            .accessibilityLabel(viewModel.isMuted ? "Unmute microphone" : "Mute microphone")
                         }
                         
                         // Optional text input
@@ -149,6 +153,7 @@ struct ConversationView: View {
                             .foregroundColor(.textSecondary)
                             .font(.system(size: 18, weight: .medium))
                     }
+                    .accessibilityLabel("Settings")
                 }
             }
             .sheet(isPresented: $viewModel.showSettings) {
@@ -322,8 +327,9 @@ struct MainActionButton: View {
         .disabled(isConnecting)
         .scaleEffect(isConnecting ? 0.95 : 1.0)
         .animation(.easeInOut(duration: 0.2), value: isConnecting)
+        .accessibilityLabel(isConnecting ? "Connecting" : isConnected ? "End conversation" : "Start conversation")
     }
-    
+
     private var buttonColor: Color {
         if isConnecting {
             return .anthropicOrange
@@ -354,6 +360,7 @@ struct TextInputBar: View {
                     .foregroundColor(text.isEmpty ? .textTertiary : .anthropicCoral)
             }
             .disabled(text.isEmpty)
+            .accessibilityLabel("Send message")
         }
         .padding(.top, 12)
     }
