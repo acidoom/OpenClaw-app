@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import UIKit
 
 @MainActor
 final class ConversationViewModel: ObservableObject {
@@ -27,6 +28,21 @@ final class ConversationViewModel: ObservableObject {
     private let keychainManager = KeychainManager.shared
 
     private var cancellables = Set<AnyCancellable>()
+    private var previousState: AppConversationState = .idle
+
+    // MARK: - User Preferences
+
+    var showTranscript: Bool {
+        UserDefaults.standard.object(forKey: "showTranscript") as? Bool ?? true
+    }
+
+    var autoStartMic: Bool {
+        UserDefaults.standard.bool(forKey: "autoStartMic")
+    }
+
+    var hapticFeedbackEnabled: Bool {
+        UserDefaults.standard.object(forKey: "hapticFeedback") as? Bool ?? true
+    }
 
     // MARK: - Forwarded Properties
 
@@ -96,6 +112,7 @@ final class ConversationViewModel: ObservableObject {
         conversationManager.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
+                self?.handleStateChange()
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
@@ -106,6 +123,27 @@ final class ConversationViewModel: ObservableObject {
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
+    }
+
+    // MARK: - Haptic Feedback
+
+    private func handleStateChange() {
+        let newState = conversationManager.state
+        guard newState != previousState else { return }
+        defer { previousState = newState }
+
+        guard hapticFeedbackEnabled else { return }
+
+        switch newState {
+        case .active:
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        case .ended:
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        case .error:
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        default:
+            break
+        }
     }
 
     // MARK: - Actions
@@ -130,6 +168,12 @@ final class ConversationViewModel: ObservableObject {
         }
     }
 
+    func retryConnection() async {
+        // Reset error state and try again
+        await conversationManager.endConversation()
+        await startConversation()
+    }
+
     func endConversation() async {
         await conversationManager.endConversation()
     }
@@ -137,6 +181,9 @@ final class ConversationViewModel: ObservableObject {
     func toggleMute() async {
         do {
             try await conversationManager.toggleMute()
+            if hapticFeedbackEnabled {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
         } catch {
             showErrorMessage("Failed to toggle mute: \(error.localizedDescription)")
         }
@@ -147,6 +194,9 @@ final class ConversationViewModel: ObservableObject {
         do {
             try await conversationManager.sendTextMessage(text)
             textInput = ""
+            if hapticFeedbackEnabled {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
         } catch {
             showErrorMessage("Failed to send message: \(error.localizedDescription)")
         }
@@ -156,6 +206,13 @@ final class ConversationViewModel: ObservableObject {
         showTextInput.toggle()
     }
 
+    /// Called on view appear — auto-starts if preference is set
+    func onAppear() {
+        if autoStartMic && state == .idle {
+            Task { await startConversation() }
+        }
+    }
+
     // MARK: - Helpers
 
     private func showErrorMessage(_ message: String) {
@@ -163,11 +220,10 @@ final class ConversationViewModel: ObservableObject {
         showError = true
     }
 
-    /// Wait for conversation to reach active state, with timeout
     private func awaitConnection(timeout: TimeInterval = 10) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while !isConnected && Date() < deadline {
-            try? await Task.sleep(nanoseconds: 200_000_000) // check every 200ms
+            try? await Task.sleep(nanoseconds: 200_000_000)
         }
         return isConnected
     }

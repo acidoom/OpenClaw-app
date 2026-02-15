@@ -44,13 +44,13 @@ final class ConversationManager: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private let keychainManager = KeychainManager.shared
-    private let audioSessionManager = AudioSessionManager.shared
+    private let historyStore = ConversationHistoryStore.shared
+    private var previousMessageCount = 0
 
     private init() {}
 
     // MARK: - Public Methods
 
-    /// Start a conversation with a public agent (using agent ID only)
     func startConversation() async throws {
         guard state == .idle || state.isEndedOrError else {
             Log.debug("Already in state: \(state), skipping")
@@ -76,6 +76,8 @@ final class ConversationManager: ObservableObject {
                 config: config
             )
             setupConversationBindings()
+            _ = historyStore.startSession(isPrivateAgent: false)
+            previousMessageCount = 0
             state = .active
             Log.info("Public conversation active")
         } catch {
@@ -85,7 +87,6 @@ final class ConversationManager: ObservableObject {
         }
     }
 
-    /// Start a conversation with a private agent (using conversation token)
     func startPrivateConversation() async throws {
         guard state == .idle || state.isEndedOrError else {
             Log.debug("Already in state: \(state), skipping private")
@@ -116,6 +117,8 @@ final class ConversationManager: ObservableObject {
                 config: config
             )
             setupConversationBindings()
+            _ = historyStore.startSession(isPrivateAgent: true)
+            previousMessageCount = 0
             state = .active
             Log.info("Private conversation active")
         } catch {
@@ -126,12 +129,14 @@ final class ConversationManager: ObservableObject {
     }
 
     func endConversation() async {
+        historyStore.endSession()
         await conversation?.endConversation()
         conversation = nil
         cancellables.removeAll()
         messages = []
         agentState = .listening
         isMuted = false
+        previousMessageCount = 0
         state = .idle
     }
 
@@ -159,6 +164,7 @@ final class ConversationManager: ObservableObject {
                     self?.state = .active
                 case .ended(let reason):
                     self?.state = .ended("\(reason)")
+                    self?.historyStore.endSession()
                 case .error(let err):
                     self?.state = .error(err.localizedDescription)
                 case .idle:
@@ -172,33 +178,42 @@ final class ConversationManager: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Deduplicate by message ID (stable), fall back to content+role for SDK streaming quirks
         conversation.$messages
             .receive(on: DispatchQueue.main)
             .sink { [weak self] sdkMessages in
+                guard let self else { return }
+
                 var seenIds = Set<String>()
                 var seenContent = Set<String>()
                 var uniqueMessages: [ConversationMessage] = []
 
                 for msg in sdkMessages {
-                    // Primary: skip messages with duplicate IDs
                     guard seenIds.insert(msg.id).inserted else { continue }
 
-                    // Secondary: skip same role+content within one batch (SDK streaming dups)
                     let contentKey = "\(msg.role)-\(msg.content)"
                     guard seenContent.insert(contentKey).inserted else {
                         Log.debug("Skipped duplicate message: \(msg.content.prefix(30))...")
                         continue
                     }
 
+                    let source: MessageSource = msg.role == .user ? .user : .ai
                     uniqueMessages.append(ConversationMessage(
                         id: msg.id,
-                        source: msg.role == .user ? .user : .ai,
+                        source: source,
                         message: msg.content
                     ))
                 }
 
-                self?.messages = uniqueMessages
+                // Persist only new messages
+                if uniqueMessages.count > self.previousMessageCount {
+                    for i in self.previousMessageCount..<uniqueMessages.count {
+                        let msg = uniqueMessages[i]
+                        self.historyStore.addMessage(source: msg.source, content: msg.message)
+                    }
+                    self.previousMessageCount = uniqueMessages.count
+                }
+
+                self.messages = uniqueMessages
             }
             .store(in: &cancellables)
 
