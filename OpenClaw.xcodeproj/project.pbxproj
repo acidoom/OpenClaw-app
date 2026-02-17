@@ -18,6 +18,7 @@
 		CCD7A1652F3788A50045D85E /* SETUP_DGX_SPARK.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = SETUP_DGX_SPARK.md; sourceTree = "<group>"; };
 		CCD7A1662F378CB30045D85E /* openclaw.plugin.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = openclaw.plugin.json; sourceTree = "<group>"; };
 		CCD7A1672F378CE20045D85E /* index.ts */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.typescript; path = index.ts; sourceTree = "<group>"; };
+		CCD7A17C2F44E0660045D85E /* TODO_SKILL.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = TODO_SKILL.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -79,6 +80,7 @@
 				CCD7A1652F3788A50045D85E /* SETUP_DGX_SPARK.md */,
 				CCD7A1662F378CB30045D85E /* openclaw.plugin.json */,
 				CCD7A1672F378CE20045D85E /* index.ts */,
+				CCD7A17C2F44E0660045D85E /* TODO_SKILL.md */,
 			);
 			path = Gateway;
 			sourceTree = "<group>";

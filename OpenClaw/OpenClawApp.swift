@@ -18,7 +18,7 @@ struct OpenClawApp: App {
         WindowGroup {
             Group {
                 if appState.isConfigured {
-                    ConversationView()
+                    MainTabView()
                 } else {
                     OnboardingView()
                 }
@@ -152,5 +152,53 @@ struct OnboardingView: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+// MARK: - Main Tab View
+
+struct MainTabView: View {
+    @EnvironmentObject private var appState: AppState
+    
+    var body: some View {
+        TabView(selection: $appState.selectedTab) {
+            ConversationView()
+                .tabItem {
+                    Label(AppTab.conversation.title, systemImage: AppTab.conversation.iconName)
+                }
+                .tag(AppTab.conversation)
+            
+            TodoListView()
+                .tabItem {
+                    Label(AppTab.todoList.title, systemImage: AppTab.todoList.iconName)
+                }
+                .tag(AppTab.todoList)
+            
+            ResearchLabView()
+                .tabItem {
+                    Label(AppTab.researchLab.title, systemImage: AppTab.researchLab.iconName)
+                }
+                .tag(AppTab.researchLab)
+        }
+        .tint(Color.anthropicCoral)
+        .onChange(of: appState.pendingAction) { _, action in
+            handleDeepLinkAction(action)
+        }
+    }
+    
+    private func handleDeepLinkAction(_ action: DeepLinkAction?) {
+        guard let action = action else { return }
+        
+        switch action {
+        case .openResearchLab:
+            appState.selectedTab = .researchLab
+            appState.clearPendingAction()
+        case .openResearchProject(let projectId):
+            appState.selectedTab = .researchLab
+            appState.selectedResearchProjectId = projectId
+            appState.clearPendingAction()
+        default:
+            break // Other actions handled by ConversationView
+        }
     }
 }

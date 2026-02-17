@@ -33,6 +33,31 @@ struct SettingsView: View {
                                 placeholder: "Optional - for notifications",
                                 text: $viewModel.gatewayHookToken
                             )
+                            
+                            // Save Button for Backend
+                            Button {
+                                viewModel.saveBackendOnly()
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if viewModel.isSaved {
+                                        Image(systemName: "checkmark")
+                                            .fontWeight(.semibold)
+                                    }
+                                    Text(viewModel.isSaved ? "Saved" : "Save Backend")
+                                        .fontWeight(.semibold)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(
+                                    viewModel.canSaveBackend
+                                        ? Color.anthropicCoral
+                                        : Color.surfaceSecondary
+                                )
+                                .foregroundStyle(viewModel.canSaveBackend ? .white : Color.textSecondary)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .disabled(!viewModel.canSaveBackend)
+                            .animation(.easeOut(duration: 0.2), value: viewModel.isSaved)
                         }
                         
                         // MARK: - Notifications Section

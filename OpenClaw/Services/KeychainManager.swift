@@ -38,6 +38,10 @@ final class KeychainManager {
         case agentId = "elevenlabs_agent_id"
         case openClawEndpoint = "openclaw_endpoint"
         case gatewayHookToken = "gateway_hook_token"
+        
+        // Research Lab - Zotero integration
+        case zoteroApiKey = "zotero_api_key"
+        case zoteroUserId = "zotero_user_id"
     }
     
     private init() {}
@@ -139,5 +143,29 @@ final class KeychainManager {
     
     func hasGatewayHookToken() -> Bool {
         (try? get(.gatewayHookToken)) != nil
+    }
+    
+    // MARK: - Zotero Methods
+    
+    func getZoteroApiKey() throws -> String {
+        try get(.zoteroApiKey)
+    }
+    
+    func getZoteroUserId() throws -> String {
+        try get(.zoteroUserId)
+    }
+    
+    func hasZoteroCredentials() -> Bool {
+        (try? get(.zoteroApiKey)) != nil && (try? get(.zoteroUserId)) != nil
+    }
+    
+    func saveZoteroCredentials(apiKey: String, userId: String) throws {
+        try save(apiKey, for: .zoteroApiKey)
+        try save(userId, for: .zoteroUserId)
+    }
+    
+    func clearZoteroCredentials() throws {
+        try delete(.zoteroApiKey)
+        try delete(.zoteroUserId)
     }
 }

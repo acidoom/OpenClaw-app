@@ -15,6 +15,8 @@ enum DeepLinkAction: Equatable {
     case showMessage(String)
     case sendMessage(String, context: String?)
     case openSettings
+    case openResearchLab
+    case openResearchProject(UUID)
     
     static func == (lhs: DeepLinkAction, rhs: DeepLinkAction) -> Bool {
         switch (lhs, rhs) {
@@ -26,8 +28,36 @@ enum DeepLinkAction: Equatable {
             return m1 == m2 && c1 == c2
         case (.openSettings, .openSettings):
             return true
+        case (.openResearchLab, .openResearchLab):
+            return true
+        case (.openResearchProject(let id1), .openResearchProject(let id2)):
+            return id1 == id2
         default:
             return false
+        }
+    }
+}
+
+// MARK: - App Tab
+
+enum AppTab: String, CaseIterable {
+    case conversation
+    case todoList
+    case researchLab
+    
+    var title: String {
+        switch self {
+        case .conversation: return "Assistant"
+        case .todoList: return "TODO"
+        case .researchLab: return "Research Lab"
+        }
+    }
+    
+    var iconName: String {
+        switch self {
+        case .conversation: return "waveform.circle.fill"
+        case .todoList: return "checklist"
+        case .researchLab: return "flask.fill"
         }
     }
 }
@@ -41,9 +71,15 @@ final class AppState: ObservableObject {
     @Published private(set) var isConfigured: Bool = false
     @Published var showOnboarding: Bool = false
     
+    // Navigation state
+    @Published var selectedTab: AppTab = .conversation
+    
     // Notification state
     @Published var notificationPermission: NotificationPermissionStatus = .notDetermined
     @Published var pendingAction: DeepLinkAction?
+    
+    // Research Lab state
+    @Published var selectedResearchProjectId: UUID?
     
     let keychainManager = KeychainManager.shared
     let networkMonitor = NetworkMonitor.shared

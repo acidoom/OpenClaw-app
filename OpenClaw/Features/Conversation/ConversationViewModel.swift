@@ -207,6 +207,10 @@ final class ConversationViewModel: ObservableObject {
             
         case .openSettings:
             showSettings = true
+            
+        case .openResearchLab, .openResearchProject:
+            // Handled by MainTabView
+            break
         }
     }
     

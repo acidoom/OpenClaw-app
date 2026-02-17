@@ -75,6 +75,42 @@ final class SettingsViewModel: ObservableObject {
         !agentId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
     
+    var canSaveBackend: Bool {
+        !openClawEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    
+    func saveBackendOnly() {
+        let trimmedEndpoint = openClawEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedHookToken = gatewayHookToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        do {
+            if !trimmedEndpoint.isEmpty {
+                try keychainManager.save(trimmedEndpoint, for: .openClawEndpoint)
+                print("[Settings] Saved endpoint: \(trimmedEndpoint)")
+            } else {
+                try? keychainManager.delete(.openClawEndpoint)
+            }
+            
+            if !trimmedHookToken.isEmpty {
+                try keychainManager.save(trimmedHookToken, for: .gatewayHookToken)
+                print("[Settings] Saved hook token")
+            } else {
+                try? keychainManager.delete(.gatewayHookToken)
+            }
+            
+            isSaved = true
+            
+            // Reset saved indicator after delay
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                isSaved = false
+            }
+        } catch {
+            saveError = error.localizedDescription
+            showSaveError = true
+        }
+    }
+    
     func save() {
         let trimmedAgentId = agentId.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedApiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
