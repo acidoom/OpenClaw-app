@@ -174,6 +174,12 @@ struct MainTabView: View {
                 }
                 .tag(AppTab.todoList)
             
+            ZoteroLibraryView()
+                .tabItem {
+                    Label(AppTab.zotero.title, systemImage: AppTab.zotero.iconName)
+                }
+                .tag(AppTab.zotero)
+            
             ResearchLabView()
                 .tabItem {
                     Label(AppTab.researchLab.title, systemImage: AppTab.researchLab.iconName)

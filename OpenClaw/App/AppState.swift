@@ -43,12 +43,14 @@ enum DeepLinkAction: Equatable {
 enum AppTab: String, CaseIterable {
     case conversation
     case todoList
+    case zotero
     case researchLab
     
     var title: String {
         switch self {
         case .conversation: return "Assistant"
         case .todoList: return "TODO"
+        case .zotero: return "Zotero"
         case .researchLab: return "Research Lab"
         }
     }
@@ -57,6 +59,7 @@ enum AppTab: String, CaseIterable {
         switch self {
         case .conversation: return "waveform.circle.fill"
         case .todoList: return "checklist"
+        case .zotero: return "books.vertical"
         case .researchLab: return "flask.fill"
         }
     }

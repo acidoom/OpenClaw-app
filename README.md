@@ -34,6 +34,7 @@
 - [Push Notifications](#push-notifications)
 - [TODO List](#todo-list)
 - [Research Lab](#research-lab)
+- [Zotero Library](#zotero-library)
 
 ---
 
@@ -54,6 +55,7 @@ OpenClaw is a native iOS application that enables real-time voice conversations 
 - **Push Notifications** - Receive notifications from OpenClaw Gateway via APNs
 - **TODO List** - Bidirectional sync with OpenClaw Gateway for task management
 - **Research Lab** - Local storage for organizing research projects and notes
+- **Zotero Library** - Full integration with Zotero for managing papers, notes, and references
 
 ---
 
@@ -82,13 +84,19 @@ OpenClaw/
 │   │   ├── ResearchLabView.swift       # Research projects list
 │   │   ├── ResearchLabViewModel.swift  # Research management logic
 │   │   └── ProjectDetailView.swift     # Individual project view
+│   ├── ZoteroLibrary/
+│   │   ├── ZoteroLibraryView.swift     # Zotero library browser
+│   │   ├── ZoteroLibraryViewModel.swift # Library state and operations
+│   │   ├── ZoteroItemDetailView.swift  # Item details and note editor
+│   │   └── ZoteroAddItemView.swift     # Create new library items
 │   └── Settings/
 │       ├── SettingsView.swift          # Settings UI
 │       └── SettingsViewModel.swift     # Settings business logic
 ├── Models/
 │   ├── ConversationTypes.swift     # Conversation data models
 │   ├── TodoTypes.swift             # TODO item, priority, and list models
-│   └── ResearchTypes.swift         # Research project models
+│   ├── ResearchTypes.swift         # Research project models
+│   └── ZoteroTypes.swift           # Zotero API response models
 ├── Services/
 │   ├── AudioSessionManager.swift   # Audio session configuration
 │   ├── ConversationManager.swift   # ElevenLabs SDK wrapper
@@ -98,7 +106,8 @@ OpenClaw/
 │   ├── PushNotificationManager.swift   # APNs registration and permissions
 │   ├── GatewayNotificationService.swift # Device registration with Gateway
 │   ├── TodoService.swift           # TODO sync with Gateway (JSON API)
-│   └── ResearchStorageService.swift # Local research project storage
+│   ├── ResearchStorageService.swift # Local research project storage
+│   └── ZoteroService.swift         # Zotero Web API integration
 ├── Assets.xcassets                 # Images, colors, app icon
 └── OpenClawApp.swift               # App entry point
 
@@ -125,6 +134,7 @@ Gateway/                            # OpenClaw Gateway Plugin
 | **GatewayNotificationService** | Registers device with OpenClaw Gateway for push notifications |
 | **TodoService** | Actor-based service for bidirectional TODO sync with Gateway via JSON API |
 | **ResearchStorageService** | Local storage service for research projects using UserDefaults |
+| **ZoteroService** | Actor-based Zotero Web API client with caching and full CRUD operations |
 
 ### Data Flow
 
@@ -695,6 +705,91 @@ The Research Lab feature provides local storage for organizing research projects
 2. Tap **+** to create a new project
 3. Add project details (title, description, notes)
 4. Tap a project to view details
+
+---
+
+## Zotero Library
+
+OpenClaw integrates with [Zotero](https://www.zotero.org), the free, open-source reference manager, allowing you to browse, search, and manage your research library directly from the app.
+
+### Features
+
+- **Full Library Access** - Browse all items in your Zotero library
+- **Hierarchical Collections** - Navigate collections in a folder-like structure matching the original Zotero interface
+- **Search** - Full-text search across your library
+- **Item Details** - View complete metadata including authors, abstract, publication info, and more
+- **Notes Support** - Read and create notes attached to library items
+- **Create Items** - Add new papers, books, and references directly from the app
+- **Edit Items** - Modify existing item metadata and notes
+- **Multiple Item Types** - Support for journal articles, books, web pages, and more
+- **Caching** - Smart caching for faster browsing with 5-minute validity
+
+### Zotero API Setup
+
+1. **Create a Zotero Account** at [zotero.org](https://www.zotero.org/user/register)
+
+2. **Generate an API Key:**
+   - Go to [Zotero API Settings](https://www.zotero.org/settings/keys)
+   - Click **Create new private key**
+   - Give it a name (e.g., "OpenClaw")
+   - Enable **Allow library access**
+   - Enable **Allow write access** (required for creating/editing items)
+   - Click **Save Key**
+   - Copy the generated key
+
+3. **Find Your User ID:**
+   - Go to [Zotero Feeds](https://www.zotero.org/settings/feeds)
+   - Your user ID is shown in the "Your userID for use in API calls" section
+
+### App Configuration
+
+1. Open **Settings** in OpenClaw
+2. Scroll to **Zotero**
+3. Enter your **User ID**
+4. Enter your **API Key**
+5. Tap **Save**
+
+### Usage
+
+1. Navigate to the **Zotero** tab
+2. Your library loads automatically
+3. Tap the **collection header** to browse collections hierarchically
+4. Use the **search bar** to filter items
+5. Tap an item to view details and notes
+6. Use the **+** button to add new items
+7. Use **Edit** to modify existing items
+8. Tap **Add Note** to create notes on items
+
+### Supported Item Types
+
+| Type | Description |
+|------|-------------|
+| **Journal Article** | Academic papers and publications |
+| **Book** | Books and monographs |
+| **Book Section** | Chapters in edited volumes |
+| **Conference Paper** | Conference proceedings |
+| **Web Page** | Online resources |
+| **Report** | Technical reports |
+| **Thesis** | Dissertations and theses |
+| **Preprint** | Unpublished manuscripts |
+| **Note** | Standalone or attached notes |
+
+### API Endpoints Used
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/users/{id}/items` | Retrieve library items |
+| GET | `/users/{id}/collections` | Retrieve collections |
+| GET | `/users/{id}/items/{key}/children` | Get item notes |
+| POST | `/users/{id}/items` | Create new items |
+| PATCH | `/users/{id}/items/{key}` | Update items |
+| DELETE | `/users/{id}/items/{key}` | Delete items |
+
+### Notes
+
+- The Zotero API has rate limits; the app uses caching to minimize requests
+- Write operations require a key with write access enabled
+- Notes are stored as child items attached to library items
 
 ---
 

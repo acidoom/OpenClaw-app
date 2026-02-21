@@ -174,6 +174,36 @@ final class TodoListViewModel: ObservableObject {
         await saveAndSync()
     }
     
+    // MARK: - Reorder Actions
+    
+    func movePendingItems(from source: IndexSet, to destination: Int) async {
+        // Get current pending items
+        var pending = pendingItems
+        
+        // Perform the move on the pending array
+        pending.move(fromOffsets: source, toOffset: destination)
+        
+        // Rebuild the full list: moved pending items + completed items
+        let completed = completedItems
+        todoList.items = pending + completed
+        
+        await saveAndSync()
+    }
+    
+    func moveCompletedItems(from source: IndexSet, to destination: Int) async {
+        // Get current completed items
+        var completed = completedItems
+        
+        // Perform the move on the completed array
+        completed.move(fromOffsets: source, toOffset: destination)
+        
+        // Rebuild the full list: pending items + moved completed items
+        let pending = pendingItems
+        todoList.items = pending + completed
+        
+        await saveAndSync()
+    }
+    
     // MARK: - Private
     
     private func saveAndSync() async {

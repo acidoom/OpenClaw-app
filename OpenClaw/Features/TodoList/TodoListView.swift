@@ -86,6 +86,9 @@ struct TodoListView: View {
                                     .onDelete { offsets in
                                         Task { await viewModel.deleteItems(at: offsets, from: viewModel.pendingItems) }
                                     }
+                                    .onMove { source, destination in
+                                        Task { await viewModel.movePendingItems(from: source, to: destination) }
+                                    }
                                 } header: {
                                     Text("Active")
                                         .font(.caption)
@@ -111,6 +114,9 @@ struct TodoListView: View {
                                     }
                                     .onDelete { offsets in
                                         Task { await viewModel.deleteItems(at: offsets, from: viewModel.completedItems) }
+                                    }
+                                    .onMove { source, destination in
+                                        Task { await viewModel.moveCompletedItems(from: source, to: destination) }
                                     }
                                 } header: {
                                     HStack {
