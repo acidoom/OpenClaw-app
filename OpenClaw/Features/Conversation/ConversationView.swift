@@ -2,7 +2,7 @@
 //  ConversationView.swift
 //  OpenClaw
 //
-//  Main voice conversation interface - Anthropic-inspired design
+//  Text-first conversation interface with voice on demand - Claude iOS inspired
 //
 
 import SwiftUI
@@ -10,6 +10,11 @@ import SwiftUI
 struct ConversationView: View {
     @StateObject private var viewModel = ConversationViewModel()
     @EnvironmentObject private var appState: AppState
+    @FocusState private var isTextFieldFocused: Bool
+    
+    private var sendButtonDisabled: Bool {
+        viewModel.textInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isSendingText
+    }
     
     var body: some View {
         NavigationStack {
@@ -30,110 +35,18 @@ struct ConversationView: View {
                 )
                 .ignoresSafeArea()
                 
-                // OpenClaw logo watermark in background
-                VStack {
-                    Spacer()
-                    Image("OpenClawLogo")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 320)
-                        .opacity(0.35)
-                    Spacer()
-                }
-                .ignoresSafeArea()
-                
                 VStack(spacing: 0) {
-                    // Connection status bar
-                    ConnectionStatusBar(
-                        status: viewModel.connectionStatus,
-                        statusColor: viewModel.statusColor,
-                        isNetworkAvailable: viewModel.isNetworkAvailable
-                    )
+                    // Message transcript - main content area
+                    messageListView
                     
-                    // Message transcript
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 16) {
-                                ForEach(viewModel.messages) { message in
-                                    MessageBubbleView(message: message)
-                                        .id(message.id)
-                                }
-                            }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 16)
-                        }
-                        .onChange(of: viewModel.messages.count) { _, _ in
-                            if let lastMessage = viewModel.messages.last {
-                                withAnimation(.easeOut(duration: 0.3)) {
-                                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Voice orb and controls - immersive design without container
-                    VStack(spacing: 24) {
-                        // Agent state indicator
-                        if viewModel.isConnected {
-                            AgentStateIndicator(state: viewModel.agentState)
-                        }
-                        
-                        // Animated orb
-                        OrbVisualizerView(
-                            agentState: viewModel.agentState,
-                            isConnected: viewModel.isConnected
-                        )
-                        .frame(width: 140, height: 140)
-                        
-                        // Control buttons
-                        HStack(spacing: 40) {
-                            // Text mode toggle
-                            ControlButton(
-                                icon: "keyboard",
-                                isActive: viewModel.showTextInput,
-                                isEnabled: viewModel.isConnected
-                            ) {
-                                viewModel.toggleTextInput()
-                            }
-                            
-                            // Main action button
-                            MainActionButton(
-                                isConnected: viewModel.isConnected,
-                                isConnecting: viewModel.state == .connecting
-                            ) {
-                                Task {
-                                    if viewModel.isConnected {
-                                        await viewModel.endConversation()
-                                    } else {
-                                        await viewModel.startConversation()
-                                    }
-                                }
-                            }
-                            
-                            // Mute toggle
-                            ControlButton(
-                                icon: viewModel.isMuted ? "mic.slash.fill" : "mic.fill",
-                                isActive: viewModel.isMuted,
-                                isEnabled: viewModel.isConnected
-                            ) {
-                                Task { await viewModel.toggleMute() }
-                            }
-                        }
-                        
-                        // Optional text input
-                        if viewModel.showTextInput && viewModel.isConnected {
-                            TextInputBar(
-                                text: $viewModel.textInput,
-                                onSend: {
-                                    Task { await viewModel.sendMessage(viewModel.textInput) }
-                                }
-                            )
+                    // Voice mode overlay when active
+                    if viewModel.isVoiceModeActive {
+                        voiceModeView
                             .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
                     }
-                    .padding(.vertical, 32)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 16)
+                    
+                    // Text input bar - always visible at bottom (Claude iOS style)
+                    inputBarView
                 }
             }
             .navigationTitle("OpenClaw")
@@ -174,7 +87,6 @@ struct ConversationView: View {
                 }
             }
             .onAppear {
-                // Handle any pending action when view appears
                 if let action = appState.pendingAction {
                     viewModel.handleDeepLinkAction(action)
                     appState.clearPendingAction()
@@ -183,54 +95,253 @@ struct ConversationView: View {
         }
         .preferredColorScheme(.dark)
     }
+    
+    // MARK: - Message List View
+    
+    private var messageListView: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                if viewModel.messages.isEmpty {
+                    // Empty state with logo
+                    VStack(spacing: 24) {
+                        Spacer()
+                        Image("OpenClawLogo")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 200)
+                            .opacity(0.4)
+                        Text("Start a conversation")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(.textSecondary)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.top, 100)
+                } else {
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        ForEach(viewModel.messages) { message in
+                            MessageBubbleView(message: message)
+                                .id(message.id)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
+                }
+            }
+            .onChange(of: viewModel.messages.count) { _, _ in
+                if let lastMessage = viewModel.messages.last {
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                    }
+                }
+            }
+            .onTapGesture {
+                isTextFieldFocused = false
+            }
+        }
+    }
+    
+    // MARK: - Voice Mode View (Overlay)
+    
+    private var voiceModeView: some View {
+        VStack(spacing: 20) {
+            // Drag indicator
+            RoundedRectangle(cornerRadius: 2.5)
+                .fill(Color.textTertiary)
+                .frame(width: 36, height: 5)
+                .padding(.top, 12)
+            
+            // Connection status
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(viewModel.isConnected ? Color.statusConnected : Color.statusConnecting)
+                    .frame(width: 8, height: 8)
+                Text(viewModel.connectionStatus)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.textSecondary)
+            }
+            
+            // Agent state indicator
+            if viewModel.isConnected {
+                AgentStateIndicator(state: viewModel.agentState)
+            }
+            
+            // Animated orb
+            OrbVisualizerView(
+                agentState: viewModel.agentState,
+                isConnected: viewModel.isConnected
+            )
+            .frame(width: 120, height: 120)
+            
+            // Voice controls
+            HStack(spacing: 32) {
+                // Mute toggle
+                VoiceControlButton(
+                    icon: viewModel.isMuted ? "mic.slash.fill" : "mic.fill",
+                    label: viewModel.isMuted ? "Unmute" : "Mute",
+                    isActive: viewModel.isMuted
+                ) {
+                    Task { await viewModel.toggleMute() }
+                }
+                
+                // End voice call button
+                VoiceControlButton(
+                    icon: "xmark",
+                    label: "End",
+                    isDestructive: true
+                ) {
+                    Task {
+                        await viewModel.endConversation()
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.isVoiceModeActive = false
+                        }
+                    }
+                }
+            }
+            .padding(.bottom, 24)
+        }
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 24)
+                .fill(Color.surfacePrimary)
+                .shadow(color: .black.opacity(0.3), radius: 20, y: -5)
+        )
+        .padding(.horizontal, 8)
+    }
+    
+    // MARK: - Input Bar View (Claude iOS Style)
+    
+    private var inputBarView: some View {
+        VStack(spacing: 0) {
+            // Separator line
+            Rectangle()
+                .fill(Color.surfaceSecondary)
+                .frame(height: 1)
+            
+            HStack(alignment: .bottom, spacing: 12) {
+                // Voice button (left side, like Claude iOS)
+                Button {
+                    withAnimation(.spring(response: 0.3)) {
+                        if viewModel.isVoiceModeActive {
+                            Task { await viewModel.endConversation() }
+                            viewModel.isVoiceModeActive = false
+                        } else {
+                            viewModel.isVoiceModeActive = true
+                            Task { await viewModel.startConversation() }
+                        }
+                    }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(viewModel.isVoiceModeActive ? Color.anthropicCoral : Color.surfaceSecondary)
+                            .frame(width: 36, height: 36)
+                        
+                        if viewModel.state == .connecting {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: viewModel.isVoiceModeActive ? "waveform" : "mic.fill")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(viewModel.isVoiceModeActive ? .white : .textSecondary)
+                        }
+                    }
+                }
+                .disabled(viewModel.state == .connecting)
+                
+                // Text input field
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField("Message", text: $viewModel.textInput, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 16))
+                        .foregroundColor(.textPrimary)
+                        .lineLimit(1...6)
+                        .focused($isTextFieldFocused)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(Color.surfaceSecondary)
+                )
+                
+                // Send button (right side)
+                Button {
+                    Task {
+                        if viewModel.isVoiceModeActive {
+                            // In voice mode: send text into the ElevenLabs voice session
+                            await viewModel.sendVoiceSessionMessage(viewModel.textInput)
+                        } else {
+                            // Not in voice mode: send text directly to OpenClaw Gateway
+                            await viewModel.sendTextMessage(viewModel.textInput)
+                        }
+                    }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(sendButtonDisabled ? Color.surfaceSecondary : Color.anthropicCoral)
+                            .frame(width: 36, height: 36)
+                        
+                        if viewModel.isSendingText {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.7)
+                        } else {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(sendButtonDisabled ? .textTertiary : .white)
+                        }
+                    }
+                }
+                .disabled(sendButtonDisabled)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.backgroundDark)
+        }
+    }
 }
 
 // MARK: - Supporting Views
 
-struct ConnectionStatusBar: View {
-    let status: String
-    let statusColor: ConversationViewModel.StatusColor
-    let isNetworkAvailable: Bool
+struct VoiceControlButton: View {
+    let icon: String
+    let label: String
+    var isActive: Bool = false
+    var isDestructive: Bool = false
+    let action: () -> Void
     
     var body: some View {
-        HStack(spacing: 10) {
-            // Animated status dot
-            Circle()
-                .fill(indicatorColor)
-                .frame(width: 8, height: 8)
-                .shadow(color: indicatorColor.opacity(0.5), radius: 4)
-            
-            Text(status)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.textSecondary)
-            
-            Spacer()
-            
-            if !isNetworkAvailable {
-                HStack(spacing: 4) {
-                    Image(systemName: "wifi.slash")
-                    Text("Offline")
-                }
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.statusDisconnected)
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Circle()
+                    .fill(backgroundColor)
+                    .frame(width: 56, height: 56)
+                    .overlay(
+                        Image(systemName: icon)
+                            .font(.system(size: 22, weight: .medium))
+                            .foregroundColor(iconColor)
+                    )
+                
+                Text(label)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.textSecondary)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(Color.surfacePrimary.opacity(0.8))
     }
     
-    private var indicatorColor: Color {
-        switch statusColor {
-        case .neutral:
-            return .textTertiary
-        case .connecting:
-            return .statusConnecting
-        case .connected:
-            return .statusConnected
-        case .disconnected:
+    private var backgroundColor: Color {
+        if isDestructive {
+            return Color.statusDisconnected.opacity(0.2)
+        }
+        return isActive ? Color.anthropicCoral.opacity(0.2) : Color.surfaceSecondary
+    }
+    
+    private var iconColor: Color {
+        if isDestructive {
             return .statusDisconnected
         }
+        return isActive ? .anthropicCoral : .textSecondary
     }
 }
 
@@ -254,108 +365,6 @@ struct AgentStateIndicator: View {
             Capsule()
                 .fill(Color.surfaceSecondary)
         )
-    }
-}
-
-struct ControlButton: View {
-    let icon: String
-    let isActive: Bool
-    let isEnabled: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 20, weight: .medium))
-                .foregroundColor(isActive ? .anthropicCoral : .textSecondary)
-                .frame(width: 52, height: 52)
-                .background(
-                    Circle()
-                        .fill(Color.surfaceSecondary)
-                )
-                .overlay(
-                    Circle()
-                        .stroke(isActive ? Color.anthropicCoral.opacity(0.3) : Color.clear, lineWidth: 2)
-                )
-        }
-        .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.4)
-    }
-}
-
-struct MainActionButton: View {
-    let isConnected: Bool
-    let isConnecting: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                // Outer glow
-                Circle()
-                    .fill(buttonColor.opacity(0.2))
-                    .frame(width: 88, height: 88)
-                
-                // Main button
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: isConnected ? [.statusDisconnected, .statusDisconnected.opacity(0.8)] : [.anthropicCoral, .anthropicOrange],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 72, height: 72)
-                    .shadow(color: buttonColor.opacity(0.4), radius: 12, y: 4)
-                
-                if isConnecting {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(1.2)
-                } else {
-                    Image(systemName: isConnected ? "stop.fill" : "waveform")
-                        .font(.system(size: 26, weight: .semibold))
-                        .foregroundColor(.white)
-                }
-            }
-        }
-        .disabled(isConnecting)
-        .scaleEffect(isConnecting ? 0.95 : 1.0)
-        .animation(.easeInOut(duration: 0.2), value: isConnecting)
-    }
-    
-    private var buttonColor: Color {
-        if isConnecting {
-            return .anthropicOrange
-        }
-        return isConnected ? .statusDisconnected : .anthropicCoral
-    }
-}
-
-struct TextInputBar: View {
-    @Binding var text: String
-    let onSend: () -> Void
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            TextField("Type a message...", text: $text)
-                .textFieldStyle(.plain)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 24)
-                        .fill(Color.surfaceSecondary)
-                )
-                .foregroundColor(.textPrimary)
-            
-            Button(action: onSend) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundColor(text.isEmpty ? .textTertiary : .anthropicCoral)
-            }
-            .disabled(text.isEmpty)
-        }
-        .padding(.top, 12)
     }
 }
 

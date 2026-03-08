@@ -38,6 +38,7 @@ final class KeychainManager {
         case agentId = "elevenlabs_agent_id"
         case openClawEndpoint = "openclaw_endpoint"
         case gatewayHookToken = "gateway_hook_token"
+        case gatewayChatEndpoint = "gateway_chat_endpoint"
         
         // Research Lab - Zotero integration
         case zoteroApiKey = "zotero_api_key"
@@ -167,5 +168,11 @@ final class KeychainManager {
     func clearZoteroCredentials() throws {
         try delete(.zoteroApiKey)
         try delete(.zoteroUserId)
+    }
+    
+    // MARK: - LibroAI / Audiobook Methods
+    
+    func hasLibroAICredentials() -> Bool {
+        hasOpenClawEndpoint() && hasGatewayHookToken()
     }
 }

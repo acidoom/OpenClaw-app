@@ -34,6 +34,12 @@ struct SettingsView: View {
                                 text: $viewModel.gatewayHookToken
                             )
                             
+                            SettingsTextField(
+                                label: "Chat Endpoint",
+                                placeholder: "https://your-gateway.ts.net",
+                                text: $viewModel.gatewayChatEndpoint
+                            )
+                            
                             // Save Button for Backend
                             Button {
                                 viewModel.saveBackendOnly()

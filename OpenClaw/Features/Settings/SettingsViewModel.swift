@@ -36,6 +36,7 @@ final class SettingsViewModel: ObservableObject {
     
     // Gateway Settings
     @Published var gatewayHookToken: String = ""
+    @Published var gatewayChatEndpoint: String = ""
     
     // Notification Settings
     @Published var notificationsEnabled: Bool = false {
@@ -61,8 +62,9 @@ final class SettingsViewModel: ObservableObject {
         openClawEndpoint = loadedEndpoint
         isPrivateAgent = !loadedApiKey.isEmpty
         
-        // Load gateway hook token
+        // Load gateway settings
         gatewayHookToken = (try? keychain.get(.gatewayHookToken)) ?? ""
+        gatewayChatEndpoint = (try? keychain.get(.gatewayChatEndpoint)) ?? ""
         
         // Load UserDefaults preferences (without triggering didSet)
         _autoStartMic = Published(initialValue: UserDefaults.standard.bool(forKey: "autoStartMic"))
@@ -82,6 +84,7 @@ final class SettingsViewModel: ObservableObject {
     func saveBackendOnly() {
         let trimmedEndpoint = openClawEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedHookToken = gatewayHookToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedChatEndpoint = gatewayChatEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         
         do {
             if !trimmedEndpoint.isEmpty {
@@ -96,6 +99,13 @@ final class SettingsViewModel: ObservableObject {
                 print("[Settings] Saved hook token")
             } else {
                 try? keychainManager.delete(.gatewayHookToken)
+            }
+            
+            if !trimmedChatEndpoint.isEmpty {
+                try keychainManager.save(trimmedChatEndpoint, for: .gatewayChatEndpoint)
+                print("[Settings] Saved chat endpoint: \(trimmedChatEndpoint)")
+            } else {
+                try? keychainManager.delete(.gatewayChatEndpoint)
             }
             
             isSaved = true
@@ -204,10 +214,12 @@ final class SettingsViewModel: ObservableObject {
         try? keychainManager.delete(.elevenLabsApiKey)
         try? keychainManager.delete(.openClawEndpoint)
         try? keychainManager.delete(.gatewayHookToken)
+        try? keychainManager.delete(.gatewayChatEndpoint)
         agentId = ""
         apiKey = ""
         openClawEndpoint = ""
         gatewayHookToken = ""
+        gatewayChatEndpoint = ""
         isPrivateAgent = false
         AppState.shared.checkConfiguration()
     }

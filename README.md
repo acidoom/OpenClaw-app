@@ -34,6 +34,7 @@
 - [Push Notifications](#push-notifications)
 - [TODO List](#todo-list)
 - [Research Lab](#research-lab)
+- [Audiobooks & Libro.fm](#audiobooks--librofm)
 - [Zotero Library](#zotero-library)
 
 ---
@@ -55,6 +56,7 @@ OpenClaw is a native iOS application that enables real-time voice conversations 
 - **Push Notifications** - Receive notifications from OpenClaw Gateway via APNs
 - **TODO List** - Bidirectional sync with OpenClaw Gateway for task management
 - **Research Lab** - Local storage for organizing research projects and notes
+- **Audiobooks** - Full audiobook player with Libro.fm integration, chapter navigation, and AI highlights
 - **Zotero Library** - Full integration with Zotero for managing papers, notes, and references
 
 ---
@@ -84,6 +86,16 @@ OpenClaw/
 │   │   ├── ResearchLabView.swift       # Research projects list
 │   │   ├── ResearchLabViewModel.swift  # Research management logic
 │   │   └── ProjectDetailView.swift     # Individual project view
+│   ├── Audiobooks/
+│   │   ├── AudiobooksView.swift         # Library grid with search
+│   │   ├── AudiobooksViewModel.swift    # Library data loading & sync
+│   │   ├── AudiobookDetailView.swift    # Book detail with chapters & highlights
+│   │   ├── AudioPlayerView.swift        # Full-screen playback controls
+│   │   ├── MiniPlayerView.swift         # Persistent mini player bar
+│   │   ├── HighlightsListView.swift     # AI highlights list with retry/delete
+│   │   ├── CoverImageView.swift         # Authenticated cover image loader
+│   │   ├── LibroFmBooksView.swift       # Browse & download Libro.fm purchases
+│   │   └── LibroFmSettingsSheet.swift   # Libro.fm account login sheet
 │   ├── ZoteroLibrary/
 │   │   ├── ZoteroLibraryView.swift     # Zotero library browser
 │   │   ├── ZoteroLibraryViewModel.swift # Library state and operations
@@ -94,6 +106,7 @@ OpenClaw/
 │       └── SettingsViewModel.swift     # Settings business logic
 ├── Models/
 │   ├── ConversationTypes.swift     # Conversation data models
+│   ├── AudiobookTypes.swift        # Audiobook, chapter, highlight, transcript models
 │   ├── TodoTypes.swift             # TODO item, priority, and list models
 │   ├── ResearchTypes.swift         # Research project models
 │   └── ZoteroTypes.swift           # Zotero API response models
@@ -106,6 +119,11 @@ OpenClaw/
 │   ├── PushNotificationManager.swift   # APNs registration and permissions
 │   ├── GatewayNotificationService.swift # Device registration with Gateway
 │   ├── TodoService.swift           # TODO sync with Gateway (JSON API)
+│   ├── LibroAIService.swift         # Audiobook backend API client
+│   ├── AudioPlayerManager.swift     # AVPlayer-based audiobook playback
+│   ├── HighlightManager.swift       # AI highlight orchestration
+│   ├── HighlightStore.swift         # Local JSON persistence for highlights
+│   ├── GatewayChatService.swift     # OpenAI-compatible chat for AI summaries
 │   ├── ResearchStorageService.swift # Local research project storage
 │   └── ZoteroService.swift         # Zotero Web API integration
 ├── Assets.xcassets                 # Images, colors, app icon
@@ -118,7 +136,9 @@ Gateway/                            # OpenClaw Gateway Plugin
 ├── openclaw.plugin.json            # Plugin manifest
 ├── README.md                       # Plugin documentation
 ├── SETUP_DGX_SPARK.md              # Setup guide for DGX Spark
-└── TODO_SKILL.md                   # AI skill instructions for TODO management
+├── TODO_SKILL.md                   # AI skill instructions for TODO management
+├── LIBROAI_API.md                  # Audiobook backend API specification
+└── BACKEND_CORRECTIONS.md          # Backend bug reports and new endpoint specs
 ```
 
 ### Key Components
@@ -133,6 +153,11 @@ Gateway/                            # OpenClaw Gateway Plugin
 | **PushNotificationManager** | Manages APNs registration, permissions, and device tokens |
 | **GatewayNotificationService** | Registers device with OpenClaw Gateway for push notifications |
 | **TodoService** | Actor-based service for bidirectional TODO sync with Gateway via JSON API |
+| **LibroAIService** | Actor-based audiobook backend client — library, streaming, chapters, playback state, Libro.fm integration |
+| **AudioPlayerManager** | Singleton AVPlayer wrapper — playback, seeking, chapters, remote commands, AirPods bookmark trigger |
+| **HighlightManager** | Orchestration actor — creates highlights, fetches transcripts, sends to AI for summarization, syncs to server |
+| **HighlightStore** | Actor-based local JSON persistence for highlights with per-audiobook file storage |
+| **GatewayChatService** | OpenAI-compatible chat client used for AI-powered highlight summarization |
 | **ResearchStorageService** | Local storage service for research projects using UserDefaults |
 | **ZoteroService** | Actor-based Zotero Web API client with caching and full CRUD operations |
 
@@ -527,7 +552,8 @@ If you're using a custom LLM endpoint:
 | **LiveKit** | WebRTC infrastructure |
 | **Security.framework** | Keychain credential storage |
 | **Network.framework** | Connectivity monitoring |
-| **AVFoundation** | Audio session management |
+| **AVFoundation** | Audio session management and audiobook playback |
+| **MediaPlayer** | Now Playing info, remote command center, AirPods controls |
 | **UserNotifications** | Push notification handling |
 
 ---
@@ -705,6 +731,117 @@ The Research Lab feature provides local storage for organizing research projects
 2. Tap **+** to create a new project
 3. Add project details (title, description, notes)
 4. Tap a project to view details
+
+---
+
+## Audiobooks & Libro.fm
+
+OpenClaw includes a full audiobook player with [Libro.fm](https://libro.fm) integration, allowing you to browse your library, stream or download audiobooks, navigate chapters, and create AI-powered highlights.
+
+<p align="center">
+  <img src="Gateway/screenshots/audiobooks-library.png" alt="Audiobooks Library" width="300"/>
+  &nbsp;&nbsp;
+  <img src="Gateway/screenshots/audiobook-detail.png" alt="Audiobook Detail" width="300"/>
+</p>
+
+### Features
+
+- **Audiobook Library** - Browse your collection in a cover art grid with search
+- **Streaming & Offline Playback** - Stream from the server or download M4B/MP3 files for offline listening
+- **Full Player Controls** - Play/pause, skip forward/backward, seek bar, playback speed (0.5x–3.0x)
+- **Chapter Navigation** - Jump between chapters with a scrollable chapter list
+- **Persistent Mini Player** - Compact player bar visible across all tabs while listening
+- **Playback Position Sync** - Position saved to server every 30 seconds, resumes where you left off
+- **AirPods Integration** - Skip forward/back with AirPods controls, triple-press to create AI highlight
+- **AI Highlights** - Bookmark moments and get AI-generated 2-3 sentence summaries of the surrounding passage
+- **Libro.fm Integration** - Connect your Libro.fm account to browse purchases and download new audiobooks
+- **Processing Status** - See download, transcription, and indexing status for each book
+
+### AI Highlights
+
+The highlight system captures moments while listening and uses AI to summarize them:
+
+1. **Trigger** - Triple-press AirPods or tap the bookmark button in the player
+2. **Capture** - Records current position and chapter
+3. **Transcript** - Fetches the last 5 minutes of transcript from the backend
+4. **Summarize** - Sends transcript to the AI (via GatewayChatService) for a 2-3 sentence summary
+5. **Save** - Stores locally as JSON, syncs to server when available
+
+Highlights work offline — bookmarks are saved locally with a "pending" status and processed when connectivity is restored.
+
+### Playback Architecture
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  AudioPlayerView│ ←→  │AudioPlayerManager│ ←→  │    AVPlayer     │
+│  MiniPlayerView │     │  (Singleton)     │     │  (AVURLAsset)   │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+                                ↓                         ↓
+                        ┌──────────────┐         ┌──────────────────┐
+                        │ LibroAIService│         │ MPRemoteCommand  │
+                        │ (Backend API) │         │ Center (AirPods) │
+                        └──────────────┘         └──────────────────┘
+                                ↓
+                        ┌──────────────┐     ┌──────────────────┐
+                        │HighlightMgr  │ ←→  │GatewayChatService│
+                        │              │     │ (AI Summaries)   │
+                        └──────────────┘     └──────────────────┘
+                                ↓
+                        ┌──────────────┐
+                        │HighlightStore│
+                        │ (Local JSON) │
+                        └──────────────┘
+```
+
+### Backend Setup
+
+The audiobook feature requires a backend server providing several API endpoints. See [Gateway/LIBROAI_API.md](Gateway/LIBROAI_API.md) for the complete API specification.
+
+**Required endpoints:**
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/api/library` | List all audiobooks with metadata |
+| GET | `/api/stream/{id}` | Stream audio with HTTP Range support |
+| GET | `/api/chapters/{id}` | Chapter list for navigation |
+| GET | `/api/playback/{id}` | Retrieve saved playback position |
+| PUT | `/api/playback/{id}` | Save playback position |
+
+**Libro.fm integration endpoints:**
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/api/libro/status` | Check Libro.fm connection |
+| POST | `/api/libro/auth` | Login to Libro.fm |
+| DELETE | `/api/libro/auth` | Disconnect Libro.fm |
+| GET | `/api/libro/books` | Browse Libro.fm purchases |
+| POST | `/api/libro/download/{id}` | Download a book to server |
+| GET | `/api/libro/downloads` | Track download progress |
+
+**AI highlights endpoints:**
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/api/highlights/{audiobook_id}` | Get highlights for a book |
+| POST | `/api/highlights` | Save/upsert a highlight |
+| DELETE | `/api/highlights/{id}` | Delete a highlight |
+| GET | `/api/transcript/{audiobook_id}` | Get transcript for AI processing |
+
+### App Configuration
+
+1. Open **Settings** in OpenClaw
+2. Scroll to **OpenClaw Gateway**
+3. Enter the **Endpoint URL** (e.g., `http://your-server:3333`)
+4. Enter the **Hook Token** for authentication
+5. Audiobooks tab will appear once the endpoint is configured and the backend is serving `/api/library`
+
+### Libro.fm Setup
+
+1. Navigate to the **Audiobooks** tab
+2. Tap the **Libro.fm** button in the toolbar
+3. Enter your Libro.fm email and password
+4. Browse your purchased audiobooks
+5. Tap **Download** to add books to your server library
 
 ---
 

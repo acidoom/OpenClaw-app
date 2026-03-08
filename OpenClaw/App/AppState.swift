@@ -44,6 +44,7 @@ enum AppTab: String, CaseIterable {
     case conversation
     case todoList
     case zotero
+    case audiobooks
     case researchLab
     
     var title: String {
@@ -51,6 +52,7 @@ enum AppTab: String, CaseIterable {
         case .conversation: return "Assistant"
         case .todoList: return "TODO"
         case .zotero: return "Zotero"
+        case .audiobooks: return "Audiobooks"
         case .researchLab: return "Research Lab"
         }
     }
@@ -60,6 +62,7 @@ enum AppTab: String, CaseIterable {
         case .conversation: return "waveform.circle.fill"
         case .todoList: return "checklist"
         case .zotero: return "books.vertical"
+        case .audiobooks: return "headphones"
         case .researchLab: return "flask.fill"
         }
     }

@@ -13,6 +13,7 @@ struct OpenClawApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppState.shared
     @StateObject private var pushManager = PushNotificationManager.shared
+    @StateObject private var audioPlayerManager = AudioPlayerManager.shared
     
     var body: some Scene {
         WindowGroup {
@@ -25,6 +26,7 @@ struct OpenClawApp: App {
             }
             .environmentObject(appState)
             .environmentObject(pushManager)
+            .environmentObject(audioPlayerManager)
             .task {
                 // Check notification permission status on launch
                 await pushManager.checkPermissionStatus()
@@ -179,6 +181,12 @@ struct MainTabView: View {
                     Label(AppTab.zotero.title, systemImage: AppTab.zotero.iconName)
                 }
                 .tag(AppTab.zotero)
+            
+            AudiobooksView()
+                .tabItem {
+                    Label(AppTab.audiobooks.title, systemImage: AppTab.audiobooks.iconName)
+                }
+                .tag(AppTab.audiobooks)
             
             ResearchLabView()
                 .tabItem {

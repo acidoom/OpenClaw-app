@@ -11,6 +11,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		CC6962282F533061006B4742 /* LIBROAI_API.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = LIBROAI_API.md; sourceTree = "<group>"; };
+		CC69622D2F53457C006B4742 /* BACKEND_CORRECTIONS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = BACKEND_CORRECTIONS.md; sourceTree = "<group>"; };
 		CC7FE1C72F351746005622EC /* OpenClaw.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenClaw.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CCD7A1602F3782660045D85E /* apns-notifier.ts */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.typescript; path = "apns-notifier.ts"; sourceTree = "<group>"; };
 		CCD7A1612F3782870045D85E /* ios-hooks.ts */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.typescript; path = "ios-hooks.ts"; sourceTree = "<group>"; };
@@ -81,6 +83,8 @@
 				CCD7A1662F378CB30045D85E /* openclaw.plugin.json */,
 				CCD7A1672F378CE20045D85E /* index.ts */,
 				CCD7A17C2F44E0660045D85E /* TODO_SKILL.md */,
+				CC6962282F533061006B4742 /* LIBROAI_API.md */,
+				CC69622D2F53457C006B4742 /* BACKEND_CORRECTIONS.md */,
 			);
 			path = Gateway;
 			sourceTree = "<group>";

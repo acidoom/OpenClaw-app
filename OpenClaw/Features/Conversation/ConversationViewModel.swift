@@ -3,6 +3,7 @@
 //  OpenClaw
 //
 //  ViewModel for the main conversation interface
+//  Routes: voice → ElevenLabs, text → OpenClaw Gateway
 //
 
 import Foundation
@@ -11,10 +12,11 @@ import Combine
 @MainActor
 final class ConversationViewModel: ObservableObject {
     @Published var showSettings = false
-    @Published var showTextInput = false
+    @Published var isVoiceModeActive = false
     @Published var textInput = ""
     @Published var errorMessage: String?
     @Published var showError = false
+    @Published var isSendingText = false
     
     // Notification-related state
     @Published var showNotificationMessage = false
@@ -23,6 +25,7 @@ final class ConversationViewModel: ObservableObject {
     private var notificationContext: String?
     
     private let conversationManager = ConversationManager.shared
+    private let gatewayChatService = GatewayChatService.shared
     private let networkMonitor = NetworkMonitor.shared
     private let keychainManager = KeychainManager.shared
     
@@ -93,7 +96,6 @@ final class ConversationViewModel: ObservableObject {
     }
     
     private func setupBindings() {
-        // Forward state changes from ConversationManager
         conversationManager.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -101,7 +103,6 @@ final class ConversationViewModel: ObservableObject {
             }
             .store(in: &cancellables)
         
-        // Forward network changes
         networkMonitor.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -110,37 +111,23 @@ final class ConversationViewModel: ObservableObject {
             .store(in: &cancellables)
     }
     
-    // MARK: - Actions
+    // MARK: - Voice Actions (ElevenLabs)
     
     func startConversation() async {
-        print("[OpenClaw] >>>>>> startConversation() CALLED <<<<<<")
-        
         guard isNetworkAvailable else {
-            print("[OpenClaw] No network, aborting")
             showErrorMessage("No network connection available")
             return
         }
         
-        print("[OpenClaw] Network OK, checking API key...")
-        
-        // Check if we have API key for private agent, otherwise use public
         let hasKey = keychainManager.hasApiKey()
-        let storedKey = try? keychainManager.getElevenLabsApiKey()
-        print("[OpenClaw] ========== START CONVERSATION ==========")
-        print("[OpenClaw] Has API Key: \(hasKey)")
-        print("[OpenClaw] Stored key length: \(storedKey?.count ?? 0)")
         
         do {
-            
             if hasKey {
-                print("[OpenClaw] Using PRIVATE conversation flow")
                 try await conversationManager.startPrivateConversation()
             } else {
-                print("[OpenClaw] Using PUBLIC conversation flow")
                 try await conversationManager.startConversation()
             }
         } catch {
-            print("[OpenClaw] Start conversation error: \(error)")
             showErrorMessage(error.localizedDescription)
         }
     }
@@ -153,14 +140,52 @@ final class ConversationViewModel: ObservableObject {
         await conversationManager.toggleMute()
     }
     
-    func sendMessage(_ text: String) async {
+    /// Send a text message into the active voice session (type while talking)
+    func sendVoiceSessionMessage(_ text: String) async {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         await conversationManager.sendTextMessage(text)
         textInput = ""
     }
     
-    func toggleTextInput() {
-        showTextInput.toggle()
+    // MARK: - Text Actions (OpenClaw Gateway)
+    
+    /// Send a text message directly to the OpenClaw Gateway — no ElevenLabs involved
+    func sendTextMessage(_ text: String) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        
+        guard isNetworkAvailable else {
+            showErrorMessage("No network connection available")
+            return
+        }
+        
+        // Add user message to transcript immediately
+        conversationManager.appendMessage(ConversationMessage(source: .user, message: trimmed))
+        textInput = ""
+        isSendingText = true
+        
+        do {
+            // Build conversation history from existing messages for context
+            let history = messages.compactMap { msg -> ChatMessage? in
+                guard msg.source == .user || msg.source == .ai else { return nil }
+                return ChatMessage(
+                    role: msg.source == .user ? "user" : "assistant",
+                    content: msg.message
+                )
+            }
+            // Drop the last message since we pass it as the new message
+            let priorHistory = history.dropLast()
+            
+            let response = try await gatewayChatService.sendMessage(trimmed, conversationHistory: Array(priorHistory))
+            
+            // Add agent response to transcript
+            conversationManager.appendMessage(ConversationMessage(source: .ai, message: response.content))
+        } catch {
+            print("[OpenClaw] Text chat error: \(error)")
+            showErrorMessage(error.localizedDescription)
+        }
+        
+        isSendingText = false
     }
     
     // MARK: - Helpers
@@ -178,7 +203,6 @@ final class ConversationViewModel: ObservableObject {
             notificationContext = context
             Task {
                 await startConversation()
-                // If there's context, we could potentially send it as a first message
                 if let ctx = context, !ctx.isEmpty {
                     print("[OpenClaw] Started conversation with context: \(ctx)")
                 }
@@ -192,15 +216,8 @@ final class ConversationViewModel: ObservableObject {
             notificationContext = context
             pendingMessageToSend = text
             Task {
-                // Start conversation first if not connected
-                if !isConnected {
-                    await startConversation()
-                    // Wait a moment for connection to establish
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
-                }
-                // Send the message
-                if isConnected, let messageText = pendingMessageToSend {
-                    await sendMessage(messageText)
+                if let messageText = pendingMessageToSend {
+                    await sendTextMessage(messageText)
                     pendingMessageToSend = nil
                 }
             }
@@ -209,7 +226,6 @@ final class ConversationViewModel: ObservableObject {
             showSettings = true
             
         case .openResearchLab, .openResearchProject:
-            // Handled by MainTabView
             break
         }
     }
