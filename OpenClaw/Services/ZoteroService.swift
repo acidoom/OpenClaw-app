@@ -309,6 +309,73 @@ actor ZoteroService {
         return true
     }
     
+    // MARK: - PDF File Download
+    
+    /// Download PDF file data for an attachment item
+    /// Zotero API v3: GET /users/{userId}/items/{itemKey}/file
+    /// Note: Only works for imported_file/imported_url attachments (stored on Zotero servers)
+    func downloadPDFFile(key: String) async throws -> Data {
+        let credentials = try getCredentials()
+        
+        guard let url = URL(string: "\(baseURL)/users/\(credentials.userId)/items/\(key)/file") else {
+            throw ZoteroServiceError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(credentials.apiKey, forHTTPHeaderField: "Zotero-API-Key")
+        request.setValue(apiVersion, forHTTPHeaderField: "Zotero-API-Version")
+        request.timeoutInterval = 60
+        
+        print("[Zotero] Downloading file for item: \(key), URL: \(url.absoluteString)")
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw ZoteroServiceError.invalidResponse
+            }
+            
+            print("[Zotero] File download response: \(httpResponse.statusCode), size: \(data.count) bytes, content-type: \(httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "unknown")")
+            
+            if httpResponse.statusCode >= 400 {
+                let message = String(data: data, encoding: .utf8)
+                print("[Zotero] File download error body: \(message ?? "nil")")
+                throw ZoteroServiceError.httpError(httpResponse.statusCode, message)
+            }
+            
+            // Validate we got actual PDF data (PDF files start with %PDF)
+            if data.count < 4 {
+                throw ZoteroServiceError.httpError(0, "Downloaded file is too small (\(data.count) bytes)")
+            }
+            
+            return data
+        } catch let error as ZoteroServiceError {
+            throw error
+        } catch let error as URLError {
+            print("[Zotero] URLError downloading file: \(error.code.rawValue) - \(error.localizedDescription)")
+            throw ZoteroServiceError.networkError(error)
+        } catch {
+            print("[Zotero] Error downloading file: \(error)")
+            throw ZoteroServiceError.networkError(error)
+        }
+    }
+    
+    /// Build URLRequest for PDF file download (for use with URLSessionDownloadTask with progress)
+    func makePDFDownloadRequest(key: String) async throws -> URLRequest {
+        let credentials = try getCredentials()
+        
+        guard let url = URL(string: "\(baseURL)/users/\(credentials.userId)/items/\(key)/file") else {
+            throw ZoteroServiceError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(credentials.apiKey, forHTTPHeaderField: "Zotero-API-Key")
+        request.setValue(apiVersion, forHTTPHeaderField: "Zotero-API-Version")
+        return request
+    }
+    
     // MARK: - Write Operations
     
     /// Create a new item in the library

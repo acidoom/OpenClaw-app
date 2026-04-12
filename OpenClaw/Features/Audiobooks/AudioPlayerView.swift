@@ -11,6 +11,7 @@ import AVKit
 struct AudioPlayerView: View {
     @EnvironmentObject private var playerManager: AudioPlayerManager
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showSpeedPicker = false
     @State private var showChapterList = false
     @State private var showHighlightsList = false
@@ -46,7 +47,16 @@ struct AudioPlayerView: View {
                     
                     Spacer()
                     
-                    if let chapter = playerManager.currentChapter {
+                    if playerManager.isDownloadingForSeek {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .tint(Color.anthropicCoral)
+                                .scaleEffect(0.6)
+                            Text("Downloading \(Int(playerManager.downloadForSeekProgress * 100))%")
+                                .font(.caption2)
+                                .foregroundStyle(Color.textTertiary)
+                        }
+                    } else if let chapter = playerManager.currentChapter, playerManager.hasChapters {
                         Text(chapter.title)
                             .font(.caption)
                             .foregroundStyle(Color.textSecondary)
@@ -110,37 +120,91 @@ struct AudioPlayerView: View {
                 }
                 .presentationDetents([.medium, .large])
                 .preferredColorScheme(.dark)
+            } else if let episode = playerManager.currentPodcastEpisode {
+                NavigationStack {
+                    PodcastHighlightsListView(episodeId: episode.id, isTranscribed: episode.isTranscribed)
+                        .environmentObject(playerManager)
+                        .navigationTitle("AI Highlights")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Done") { showHighlightsList = false }
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Color.anthropicCoral)
+                            }
+                        }
+                }
+                .presentationDetents([.medium, .large])
+                .preferredColorScheme(.dark)
             }
         }
     }
     
     // MARK: - Cover Art
     
+    @ViewBuilder
     private var coverArtView: some View {
-        CoverImageView(coverUrl: playerManager.currentAudiobook?.coverUrl, cornerRadius: 16)
+        if playerManager.currentAudiobook != nil {
+            CoverImageView(coverUrl: playerManager.currentAudiobook?.coverUrl, cornerRadius: 16)
+                .aspectRatio(1, contentMode: .fit)
+                .frame(maxWidth: horizontalSizeClass == .regular ? 400 : 300, maxHeight: horizontalSizeClass == .regular ? 400 : 300)
+                .shadow(color: .black.opacity(0.4), radius: 20, y: 10)
+        } else if let episode = playerManager.currentPodcastEpisode {
+            AsyncImage(url: URL(string: episode.artworkUrl ?? playerManager.currentPodcast?.artworkUrl ?? "")) { image in
+                image.resizable().aspectRatio(contentMode: .fill)
+            } placeholder: {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.surfaceSecondary)
+                    .overlay(
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .font(.system(size: 40))
+                            .foregroundStyle(Color.textTertiary)
+                    )
+            }
             .aspectRatio(1, contentMode: .fit)
-            .frame(maxWidth: 300, maxHeight: 300)
+            .frame(maxWidth: horizontalSizeClass == .regular ? 400 : 300, maxHeight: horizontalSizeClass == .regular ? 400 : 300)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
             .shadow(color: .black.opacity(0.4), radius: 20, y: 10)
+        }
     }
     
     // MARK: - Title Section
     
     private var titleSection: some View {
         VStack(spacing: 4) {
-            Text(playerManager.currentAudiobook?.title ?? "")
-                .font(.title3)
-                .fontWeight(.semibold)
-                .foregroundStyle(Color.textPrimary)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-            
-            Text(playerManager.currentAudiobook?.author ?? "")
-                .font(.subheadline)
-                .foregroundStyle(Color.textSecondary)
-                .lineLimit(1)
-            
-            if let narrator = playerManager.currentAudiobook?.narrator {
-                Text("Narrated by \(narrator)")
+            if let audiobook = playerManager.currentAudiobook {
+                Text(audiobook.title)
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                
+                Text(audiobook.author)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.textSecondary)
+                    .lineLimit(1)
+                
+                if let narrator = audiobook.narrator {
+                    Text("Narrated by \(narrator)")
+                        .font(.caption)
+                        .foregroundStyle(Color.textTertiary)
+                        .lineLimit(1)
+                }
+            } else if let episode = playerManager.currentPodcastEpisode {
+                Text(episode.title)
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                
+                Text(playerManager.currentPodcast?.title ?? "")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.textSecondary)
+                    .lineLimit(1)
+                
+                Text(playerManager.currentPodcast?.author ?? "")
                     .font(.caption)
                     .foregroundStyle(Color.textTertiary)
                     .lineLimit(1)
@@ -153,36 +217,41 @@ struct AudioPlayerView: View {
     private var progressSection: some View {
         VStack(spacing: 4) {
             Slider(
-                value: isDraggingSlider
-                    ? $dragPosition
-                    : Binding(
-                        get: { playerManager.currentTime },
-                        set: { _ in }
-                    ),
+                value: $dragPosition,
                 in: 0...max(playerManager.duration, 1)
             ) { editing in
-                if editing {
-                    isDraggingSlider = true
-                    dragPosition = playerManager.currentTime
-                } else {
-                    isDraggingSlider = false
+                isDraggingSlider = editing
+                if !editing {
                     playerManager.seek(to: dragPosition)
                 }
             }
             .tint(Color.anthropicCoral)
+            .onChange(of: playerManager.currentTime) { _, newValue in
+                if !isDraggingSlider {
+                    dragPosition = newValue
+                }
+            }
             
             HStack {
-                Text(formatTime(isDraggingSlider ? dragPosition : playerManager.currentTime))
+                Text(formatTime(dragPosition))
                     .font(.caption2)
                     .monospacedDigit()
                     .foregroundStyle(Color.textSecondary)
                 
                 Spacer()
                 
-                Text("-\(formatTime(playerManager.remainingTime))")
+                Text("-\(formatTime(max(0, playerManager.duration - dragPosition)))")
                     .font(.caption2)
                     .monospacedDigit()
                     .foregroundStyle(Color.textSecondary)
+            }
+            
+            if let warning = playerManager.seekWarning {
+                Text(warning)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 4)
             }
         }
     }
@@ -200,11 +269,11 @@ struct AudioPlayerView: View {
                     .foregroundStyle(Color.textPrimary)
             }
             
-            // Previous chapter
+            // Previous chapter (or skip back 5 min if no chapters)
             Button {
                 playerManager.previousChapter()
             } label: {
-                Image(systemName: "backward.end.fill")
+                Image(systemName: playerManager.hasChapters ? "backward.end.fill" : "gobackward.5")
                     .font(.title3)
                     .foregroundStyle(Color.textPrimary)
             }
@@ -228,11 +297,11 @@ struct AudioPlayerView: View {
             }
             .disabled(playerManager.isBuffering)
             
-            // Next chapter
+            // Next chapter (or skip forward 5 min if no chapters)
             Button {
                 playerManager.nextChapter()
             } label: {
-                Image(systemName: "forward.end.fill")
+                Image(systemName: playerManager.hasChapters ? "forward.end.fill" : "goforward.5")
                     .font(.title3)
                     .foregroundStyle(Color.textPrimary)
             }
@@ -280,8 +349,9 @@ struct AudioPlayerView: View {
                 showChapterList = true
             } label: {
                 Image(systemName: "list.bullet")
-                    .foregroundStyle(Color.textPrimary)
+                    .foregroundStyle(playerManager.hasChapters ? Color.textPrimary : Color.textTertiary)
             }
+            .disabled(!playerManager.hasChapters)
             
             Spacer()
             
@@ -297,7 +367,7 @@ struct AudioPlayerView: View {
                     .foregroundStyle(playerManager.isCreatingHighlight ? Color.anthropicCoral : Color.textPrimary)
                     .symbolEffect(.bounce, value: bookmarkBounce)
             }
-            .disabled(playerManager.isCreatingHighlight || playerManager.currentAudiobook == nil)
+            .disabled(playerManager.isCreatingHighlight || !playerManager.hasActiveSession)
             
             Spacer()
             
@@ -308,7 +378,7 @@ struct AudioPlayerView: View {
                 Image(systemName: "text.book.closed")
                     .foregroundStyle(Color.textPrimary)
             }
-            .disabled(playerManager.currentAudiobook == nil)
+            .disabled(!playerManager.hasActiveSession)
             
             Spacer()
             

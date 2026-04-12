@@ -11,6 +11,7 @@ struct SettingsView: View {
     @StateObject private var viewModel = SettingsViewModel()
     @EnvironmentObject private var pushManager: PushNotificationManager
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     var body: some View {
         NavigationStack {
@@ -278,6 +279,8 @@ struct SettingsView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 20)
+                    .frame(maxWidth: horizontalSizeClass == .regular ? 600 : .infinity)
+                    .frame(maxWidth: .infinity)
                 }
             }
             .navigationTitle("Settings")

@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import SwiftUI
 
 // MARK: - Deep Link Actions
 
@@ -17,6 +18,9 @@ enum DeepLinkAction: Equatable {
     case openSettings
     case openResearchLab
     case openResearchProject(UUID)
+    case openTodoList
+    case openAudiobook(String)
+    case openPodcast(String)
     
     static func == (lhs: DeepLinkAction, rhs: DeepLinkAction) -> Bool {
         switch (lhs, rhs) {
@@ -32,6 +36,12 @@ enum DeepLinkAction: Equatable {
             return true
         case (.openResearchProject(let id1), .openResearchProject(let id2)):
             return id1 == id2
+        case (.openTodoList, .openTodoList):
+            return true
+        case (.openAudiobook(let a), .openAudiobook(let b)):
+            return a == b
+        case (.openPodcast(let a), .openPodcast(let b)):
+            return a == b
         default:
             return false
         }
@@ -45,6 +55,7 @@ enum AppTab: String, CaseIterable {
     case todoList
     case zotero
     case audiobooks
+    case podcasts
     case researchLab
     
     var title: String {
@@ -53,6 +64,7 @@ enum AppTab: String, CaseIterable {
         case .todoList: return "TODO"
         case .zotero: return "Zotero"
         case .audiobooks: return "Audiobooks"
+        case .podcasts: return "Podcasts"
         case .researchLab: return "Research Lab"
         }
     }
@@ -63,6 +75,7 @@ enum AppTab: String, CaseIterable {
         case .todoList: return "checklist"
         case .zotero: return "books.vertical"
         case .audiobooks: return "headphones"
+        case .podcasts: return "antenna.radiowaves.left.and.right"
         case .researchLab: return "flask.fill"
         }
     }
@@ -83,6 +96,10 @@ final class AppState: ObservableObject {
     // Notification state
     @Published var notificationPermission: NotificationPermissionStatus = .notDetermined
     @Published var pendingAction: DeepLinkAction?
+    
+    // iPad sidebar state
+    @Published var isSidebarPlayerExpanded: Bool = true
+    @Published var sidebarVisibility: NavigationSplitViewVisibility = .automatic
     
     // Research Lab state
     @Published var selectedResearchProjectId: UUID?

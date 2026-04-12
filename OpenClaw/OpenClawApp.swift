@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UIKit
+import WidgetKit
 
 @main
 struct OpenClawApp: App {
@@ -14,12 +15,13 @@ struct OpenClawApp: App {
     @StateObject private var appState = AppState.shared
     @StateObject private var pushManager = PushNotificationManager.shared
     @StateObject private var audioPlayerManager = AudioPlayerManager.shared
+    @Environment(\.scenePhase) private var scenePhase
     
     var body: some Scene {
         WindowGroup {
             Group {
                 if appState.isConfigured {
-                    MainTabView()
+                    AdaptiveRootView()
                 } else {
                     OnboardingView()
                 }
@@ -35,12 +37,45 @@ struct OpenClawApp: App {
             .onChange(of: pushManager.permissionStatus) { _, newValue in
                 appState.updateNotificationPermission(newValue)
             }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .background {
+                    WidgetDataManager.shared.reloadWidgets()
+                }
+            }
+            .onOpenURL { url in
+                handleWidgetURL(url)
+            }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                 // Clear badge when app becomes active
                 Task {
                     await pushManager.clearBadge()
                 }
             }
+        }
+    }
+    
+    private func handleWidgetURL(_ url: URL) {
+        guard url.scheme == "openclaw" else { return }
+        
+        switch url.host {
+        case "todo":
+            appState.pendingAction = .openTodoList
+        case "audiobook":
+            let audiobookId = url.pathComponents.dropFirst().first ?? ""
+            if !audiobookId.isEmpty {
+                appState.pendingAction = .openAudiobook(audiobookId)
+            } else {
+                appState.selectedTab = .audiobooks
+            }
+        case "podcast":
+            let podcastId = url.pathComponents.dropFirst().first ?? ""
+            if !podcastId.isEmpty {
+                appState.pendingAction = .openPodcast(podcastId)
+            } else {
+                appState.selectedTab = .podcasts
+            }
+        default:
+            break
         }
     }
 }
@@ -157,62 +192,4 @@ struct OnboardingView: View {
     }
 }
 
-// MARK: - Main Tab View
 
-struct MainTabView: View {
-    @EnvironmentObject private var appState: AppState
-    
-    var body: some View {
-        TabView(selection: $appState.selectedTab) {
-            ConversationView()
-                .tabItem {
-                    Label(AppTab.conversation.title, systemImage: AppTab.conversation.iconName)
-                }
-                .tag(AppTab.conversation)
-            
-            TodoListView()
-                .tabItem {
-                    Label(AppTab.todoList.title, systemImage: AppTab.todoList.iconName)
-                }
-                .tag(AppTab.todoList)
-            
-            ZoteroLibraryView()
-                .tabItem {
-                    Label(AppTab.zotero.title, systemImage: AppTab.zotero.iconName)
-                }
-                .tag(AppTab.zotero)
-            
-            AudiobooksView()
-                .tabItem {
-                    Label(AppTab.audiobooks.title, systemImage: AppTab.audiobooks.iconName)
-                }
-                .tag(AppTab.audiobooks)
-            
-            ResearchLabView()
-                .tabItem {
-                    Label(AppTab.researchLab.title, systemImage: AppTab.researchLab.iconName)
-                }
-                .tag(AppTab.researchLab)
-        }
-        .tint(Color.anthropicCoral)
-        .onChange(of: appState.pendingAction) { _, action in
-            handleDeepLinkAction(action)
-        }
-    }
-    
-    private func handleDeepLinkAction(_ action: DeepLinkAction?) {
-        guard let action = action else { return }
-        
-        switch action {
-        case .openResearchLab:
-            appState.selectedTab = .researchLab
-            appState.clearPendingAction()
-        case .openResearchProject(let projectId):
-            appState.selectedTab = .researchLab
-            appState.selectedResearchProjectId = projectId
-            appState.clearPendingAction()
-        default:
-            break // Other actions handled by ConversationView
-        }
-    }
-}

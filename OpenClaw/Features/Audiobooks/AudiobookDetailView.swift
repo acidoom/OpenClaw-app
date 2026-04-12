@@ -14,6 +14,7 @@ struct AudiobookDetailView: View {
     @EnvironmentObject private var playerManager: AudioPlayerManager
     @StateObject private var viewModel: AudiobookDetailViewModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     init(audiobook: Audiobook, libraryViewModel: AudiobooksViewModel) {
         self.audiobook = audiobook
@@ -89,7 +90,7 @@ struct AudiobookDetailView: View {
     private var coverSection: some View {
         CoverImageView(coverUrl: audiobook.coverUrl)
             .aspectRatio(1, contentMode: .fit)
-            .frame(maxWidth: 200, maxHeight: 200)
+            .frame(maxWidth: horizontalSizeClass == .regular ? 280 : 200, maxHeight: horizontalSizeClass == .regular ? 280 : 200)
             .shadow(color: .black.opacity(0.3), radius: 12, y: 6)
     }
     

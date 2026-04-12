@@ -265,6 +265,18 @@ struct ZoteroItemData: Codable, Equatable {
         title ?? filename ?? "Untitled"
     }
     
+    var isPDF: Bool {
+        contentType == "application/pdf"
+    }
+    
+    /// Whether this attachment's file is stored on Zotero servers (downloadable via API)
+    var isDownloadable: Bool {
+        guard itemType == .attachment else { return false }
+        // linked_file = local file only, linked_url = URL only — neither stored on Zotero servers
+        // imported_file and imported_url are stored on Zotero servers
+        return linkMode == "imported_file" || linkMode == "imported_url"
+    }
+    
     var authorsString: String {
         guard let creators = creators else { return "" }
         let authors = creators.filter { $0.creatorType == "author" }

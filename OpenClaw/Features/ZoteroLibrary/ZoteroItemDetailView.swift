@@ -13,11 +13,19 @@ struct ZoteroItemDetailView: View {
     var onItemUpdated: ((ZoteroItem) -> Void)?
     
     @StateObject private var viewModel: ZoteroItemDetailViewModel
+    @EnvironmentObject private var playerManager: AudioPlayerManager
     @Environment(\.dismiss) private var dismiss
     @State private var selectedNote: ZoteroNote?
     @State private var showEditSheet = false
     @State private var showAddNoteSheet = false
     @State private var editingNote: ZoteroNote?
+    @State private var showGenerateAudioSheet = false
+    @State private var paperAudioJobs: [PaperAudioJob] = []
+    @State private var selectedPaperAudioJob: PaperAudioJob?
+    @State private var paperAudioError: String?
+    @State private var attachments: [ZoteroItem] = []
+    @State private var isLoadingAttachments = false
+    @State private var selectedPDFAttachment: ZoteroItem?
     
     init(item: ZoteroItem, onItemUpdated: ((ZoteroItem) -> Void)? = nil) {
         self.item = item
@@ -46,6 +54,9 @@ struct ZoteroItemDetailView: View {
                         // Notes
                         notesSection
                         
+                        // PDF Attachments
+                        attachmentsSection
+                        
                         // Tags
                         if let tags = viewModel.currentItem.data.tags, !tags.isEmpty {
                             tagsSection(tags)
@@ -53,6 +64,9 @@ struct ZoteroItemDetailView: View {
                         
                         // Links
                         linksSection
+                        
+                        // Paper Audio
+                        paperAudioSection
                         
                         // Delete button
                         deleteButton
@@ -124,6 +138,18 @@ struct ZoteroItemDetailView: View {
             } message: {
                 Text(viewModel.errorMessage ?? "An error occurred")
             }
+            .sheet(isPresented: $showGenerateAudioSheet) {
+                GeneratePaperAudioSheet(item: viewModel.currentItem) {
+                    Task { await loadPaperAudioJobs() }
+                }
+            }
+            .sheet(item: $selectedPaperAudioJob) { job in
+                PaperAudioPlayerView(job: job)
+                    .environmentObject(playerManager)
+            }
+            .fullScreenCover(item: $selectedPDFAttachment) { attachment in
+                PDFViewerView(item: item, attachment: attachment)
+            }
             .alert("Delete Item", isPresented: $viewModel.showDeleteConfirmation) {
                 Button("Cancel", role: .cancel) {}
                 Button("Delete", role: .destructive) {
@@ -139,7 +165,215 @@ struct ZoteroItemDetailView: View {
         }
         .presentationDetents([.large])
         .task {
+            print("[ZoteroDetail] .task started for item: \(viewModel.currentItem.key)")
             await viewModel.loadNotes()
+            print("[ZoteroDetail] Notes loaded, now loading attachments and paper audio jobs...")
+            await loadAttachments()
+            await loadPaperAudioJobs()
+        }
+    }
+    
+    // MARK: - PDF Attachments
+    
+    private var pdfAttachments: [ZoteroItem] {
+        attachments.filter { $0.data.isPDF }
+    }
+    
+    private var downloadablePDFs: [ZoteroItem] {
+        pdfAttachments.filter { $0.data.isDownloadable }
+    }
+    
+    private var linkedOnlyPDFs: [ZoteroItem] {
+        pdfAttachments.filter { !$0.data.isDownloadable }
+    }
+    
+    private var attachmentsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("ATTACHMENTS")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Color.textSecondary)
+                    .tracking(0.5)
+                
+                Spacer()
+                
+                if isLoadingAttachments {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                        .tint(Color.anthropicCoral)
+                }
+            }
+            
+            if pdfAttachments.isEmpty && !isLoadingAttachments {
+                Text("No PDF attachments")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.textTertiary)
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.surfaceSecondary)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else {
+                VStack(spacing: 1) {
+                    ForEach(downloadablePDFs) { attachment in
+                        AttachmentRow(attachment: attachment)
+                            .onTapGesture {
+                                selectedPDFAttachment = attachment
+                            }
+                    }
+                    
+                    ForEach(linkedOnlyPDFs) { attachment in
+                        AttachmentRow(attachment: attachment, isLinkedOnly: true)
+                    }
+                }
+                .background(Color.surfaceSecondary)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+    
+    private func loadAttachments() async {
+        isLoadingAttachments = true
+        do {
+            let children = try await ZoteroService.shared.fetchChildItems(parentKey: viewModel.currentItem.key)
+            attachments = children.filter { $0.data.itemType == .attachment }
+            print("[ZoteroDetail] Found \(pdfAttachments.count) PDF attachments")
+        } catch {
+            print("[ZoteroDetail] Failed to load attachments: \(error)")
+        }
+        isLoadingAttachments = false
+    }
+    
+    // MARK: - Paper Audio Section
+    
+    private var paperAudioSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("PAPER AUDIO")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(Color.textSecondary)
+                .tracking(0.5)
+            
+            // Show error if fetch failed
+            if let error = paperAudioError {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Color.statusDisconnected)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(Color.statusDisconnected)
+                        .lineLimit(3)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.statusDisconnected.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            
+            VStack(spacing: 1) {
+                // Existing completed jobs — tap to play
+                ForEach(paperAudioJobs.filter { $0.status == .completed }) { job in
+                    Button {
+                        selectedPaperAudioJob = job
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: job.mode.iconName)
+                                .foregroundStyle(Color.anthropicCoral)
+                                .frame(width: 24)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(job.mode.displayName)
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(Color.textPrimary)
+                                
+                                if let duration = job.formattedDuration {
+                                    Text(duration)
+                                        .font(.caption)
+                                        .foregroundStyle(Color.textTertiary)
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            Image(systemName: "play.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(Color.anthropicCoral)
+                        }
+                        .padding()
+                        .background(Color.surfacePrimary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                // Active jobs — show progress
+                ForEach(paperAudioJobs.filter { $0.status.isActive }) { job in
+                    HStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .tint(Color.anthropicCoral)
+                            .frame(width: 24)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(job.mode.displayName) — \(job.status.displayName)")
+                                .font(.subheadline)
+                                .foregroundStyle(Color.textPrimary)
+                            
+                            if let progress = job.progress {
+                                ProgressView(value: progress)
+                                    .tint(Color.anthropicCoral)
+                                    .scaleEffect(y: 0.6)
+                            }
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding()
+                    .background(Color.surfacePrimary)
+                }
+                
+                // Generate button
+                Button {
+                    showGenerateAudioSheet = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "waveform.circle.fill")
+                            .foregroundStyle(Color.anthropicCoral)
+                            .frame(width: 24)
+                        
+                        Text("Generate Audiobook")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundStyle(Color.anthropicCoral)
+                        
+                        Spacer()
+                        
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(Color.textTertiary)
+                    }
+                    .padding()
+                    .background(Color.surfacePrimary)
+                }
+                .buttonStyle(.plain)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+    
+    private func loadPaperAudioJobs() async {
+        print("[ZoteroDetail] Loading paper audio jobs for item key: \(viewModel.currentItem.key)")
+        paperAudioError = nil
+        do {
+            let allJobs = try await PaperAudioService.shared.fetchJobs(forceRefresh: true)
+            paperAudioJobs = allJobs.filter { $0.zoteroItemKey == viewModel.currentItem.key }
+            print("[ZoteroDetail] Loaded \(paperAudioJobs.count) paper audio jobs for \(viewModel.currentItem.key) (from \(allJobs.count) total)")
+            for job in paperAudioJobs {
+                print("[ZoteroDetail]   - Job \(job.id): \(job.mode.rawValue) / \(job.status.rawValue)")
+            }
+        } catch {
+            paperAudioError = error.localizedDescription
+            print("[ZoteroDetail] Failed to load paper audio jobs: \(error)")
         }
     }
     
@@ -365,13 +599,14 @@ struct MetadataRow: View {
     let label: String
     let value: String
     var isLink: Bool = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     var body: some View {
         HStack(alignment: .top) {
             Text(label)
                 .font(.subheadline)
                 .foregroundStyle(Color.textSecondary)
-                .frame(width: 90, alignment: .leading)
+                .frame(width: horizontalSizeClass == .regular ? 120 : 90, alignment: .leading)
             
             Text(value)
                 .font(.subheadline)
@@ -802,6 +1037,44 @@ struct ZoteroNoteEditorSheet: View {
             }
             isSaving = false
         }
+    }
+}
+
+// MARK: - Attachment Row
+
+struct AttachmentRow: View {
+    let attachment: ZoteroItem
+    var isLinkedOnly: Bool = false
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: isLinkedOnly ? "link" : "doc.fill")
+                .font(.title3)
+                .foregroundStyle(isLinkedOnly ? Color.textTertiary : Color.anthropicCoral)
+                .frame(width: 32)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(attachment.data.filename ?? "PDF")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(isLinkedOnly ? Color.textSecondary : Color.textPrimary)
+                    .lineLimit(1)
+                
+                Text(isLinkedOnly ? "Linked file — not synced to Zotero" : (attachment.data.contentType ?? "application/pdf"))
+                    .font(.caption2)
+                    .foregroundStyle(Color.textTertiary)
+            }
+            
+            Spacer()
+            
+            if !isLinkedOnly {
+                Image(systemName: "eye.fill")
+                    .font(.caption)
+                    .foregroundStyle(Color.anthropicCoral)
+            }
+        }
+        .padding(12)
+        .contentShape(Rectangle())
     }
 }
 

@@ -18,6 +18,8 @@ final class AudioPlayerManager: ObservableObject {
     // MARK: - Published State
     
     @Published private(set) var currentAudiobook: Audiobook?
+    @Published private(set) var currentPodcastEpisode: PodcastEpisode?
+    @Published private(set) var currentPodcast: Podcast?
     @Published private(set) var chapters: [AudiobookChapter] = []
     @Published private(set) var currentChapter: AudiobookChapter?
     @Published private(set) var isPlaying: Bool = false
@@ -35,11 +37,14 @@ final class AudioPlayerManager: ObservableObject {
     @Published private(set) var playerError: String?
     @Published private(set) var lastHighlightId: String?
     @Published private(set) var isCreatingHighlight: Bool = false
+    @Published private(set) var isDownloadingForSeek: Bool = false
+    @Published private(set) var downloadForSeekProgress: Double = 0
+    @Published private(set) var seekWarning: String?
     
     // MARK: - Computed
     
     var progress: Double { duration > 0 ? currentTime / duration : 0 }
-    var hasActiveSession: Bool { currentAudiobook != nil }
+    var hasActiveSession: Bool { currentAudiobook != nil || currentPodcastEpisode != nil }
     var remainingTime: Double { max(0, duration - currentTime) }
     
     var currentChapterProgress: Double {
@@ -48,6 +53,8 @@ final class AudioPlayerManager: ObservableObject {
         guard chapterDuration > 0 else { return 0 }
         return (currentTime - chapter.startSeconds) / chapterDuration
     }
+    
+    var hasChapters: Bool { chapters.count > 1 }
     
     // MARK: - Private Properties
     
@@ -63,11 +70,18 @@ final class AudioPlayerManager: ObservableObject {
     private var lastSyncedPosition: Double = 0
     private let syncThreshold: Double = 15.0
     
+    // Now Playing artwork
+    private var nowPlayingArtwork: MPMediaItemArtwork?
+    
     // Bookmark trigger: two triple-presses (previousTrack) within 1s
     private var lastPreviousTrackTime: Date?
     
+    // Background download for seek support
+    private var backgroundDownloadTask: Task<Void, Never>?
+    
     // KVO observations
     private var statusObservation: NSKeyValueObservation?
+    private var durationObservation: NSKeyValueObservation?
     private var bufferEmptyObservation: NSKeyValueObservation?
     private var bufferKeepUpObservation: NSKeyValueObservation?
     
@@ -95,6 +109,12 @@ final class AudioPlayerManager: ObservableObject {
         playerError = nil
         currentAudiobook = audiobook
         isBuffering = true
+        nowPlayingArtwork = nil
+        
+        // Load artwork for lock screen / Control Center
+        if let coverUrl = audiobook.coverUrl, coverUrl.hasPrefix("http") {
+            loadNowPlayingArtwork(from: coverUrl)
+        }
         
         do {
             // Configure audio session
@@ -137,6 +157,21 @@ final class AudioPlayerManager: ObservableObject {
                     var playable = false
                     do {
                         playable = try await localAsset.load(.isPlayable)
+                        let assetDuration = try await localAsset.load(.duration)
+                        print("[AudioPlayer] Local file diagnostics:")
+                        print("[AudioPlayer]   Size: \(fileSize) bytes (\(String(format: "%.1f", Double(fileSize) / 1_048_576.0)) MB)")
+                        print("[AudioPlayer]   AVAsset duration: \(assetDuration.seconds)s (finite: \(assetDuration.seconds.isFinite))")
+                        print("[AudioPlayer]   Metadata duration: \(audiobook.durationSeconds)s")
+                        print("[AudioPlayer]   Playable: \(playable)")
+                        print("[AudioPlayer]   Format: \(audiobook.format.rawValue)")
+                        
+                        // Check if duration is suspiciously wrong
+                        if assetDuration.seconds.isFinite && assetDuration.seconds > 0 && audiobook.durationSeconds > 0 {
+                            let ratio = assetDuration.seconds / audiobook.durationSeconds
+                            if ratio < 0.1 {
+                                print("[AudioPlayer] ⚠️ AVAsset duration is <10% of metadata — file may be truncated or corrupt!")
+                            }
+                        }
                     } catch {
                         print("[AudioPlayer] Failed to check isPlayable: \(error)")
                     }
@@ -173,6 +208,12 @@ final class AudioPlayerManager: ObservableObject {
             // Wait for player to be ready, then seek and play
             observePlayerReadiness(startPosition: startPosition)
             
+            // If streaming (no local file), download in background for seek support
+            let isLocal = await service.localFileURL(for: audiobook) != nil
+            if !isLocal && audiobook.downloaded {
+                startBackgroundDownloadForSeek(audiobook: audiobook)
+            }
+            
         } catch {
             print("[AudioPlayer] Error starting playback: \(error)")
             playerError = error.localizedDescription
@@ -185,12 +226,14 @@ final class AudioPlayerManager: ObservableObject {
         player.rate = Float(playbackSpeed)
         isPlaying = true
         updateNowPlayingInfo()
+        pushNowPlayingToWidget()
     }
     
     func pause() {
         player?.pause()
         isPlaying = false
         updateNowPlayingInfo()
+        pushNowPlayingToWidget()
         Task { await syncPosition() }
     }
     
@@ -203,13 +246,49 @@ final class AudioPlayerManager: ObservableObject {
     }
     
     func seek(to seconds: Double) {
-        let clamped = max(0, min(seconds, duration))
+        // Use the best known upper bound for clamping
+        let upperBound: Double
+        if duration > 0 {
+            upperBound = duration
+        } else if let audiobook = currentAudiobook, audiobook.durationSeconds > 0 {
+            upperBound = audiobook.durationSeconds
+        } else {
+            upperBound = seconds // allow seeking when duration is unknown
+        }
+        let clamped = max(0, min(seconds, upperBound))
         let time = CMTime(seconds: clamped, preferredTimescale: 600)
-        player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+        
+        // Use relaxed tolerance for MP3 files — they lack precise seek points,
+        // so .zero tolerance can cause seeks to fail or hang on large files
+        let isMP3 = currentAudiobook?.format == .mp3
+        let tolerance = isMP3 ? CMTime(seconds: 2.0, preferredTimescale: 600) : CMTime.zero
+        
+        // Clear any previous warning
+        seekWarning = nil
+        
+        player?.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] finished in
             Task { @MainActor in
-                self?.currentTime = clamped
-                self?.updateCurrentChapter()
-                self?.updateNowPlayingInfo()
+                guard let self = self, let player = self.player else { return }
+                if finished {
+                    // Verify the player actually moved to the requested position
+                    let actualTime = player.currentTime().seconds
+                    let seekDelta = abs(actualTime - clamped)
+                    
+                    if seekDelta > 5.0 && clamped > 30 {
+                        // Seek "succeeded" but player didn't actually move — file has seek issues
+                        print("[AudioPlayer] ⚠️ Seek verification failed: requested \(clamped)s, actual \(actualTime)s (delta: \(seekDelta)s)")
+                        print("[AudioPlayer] This file likely has corrupt frames or missing VBR headers")
+                        self.seekWarning = "This audio file doesn't support seeking. It may be corrupt or missing index headers."
+                        // Update currentTime to actual position instead of requested
+                        self.currentTime = actualTime
+                    } else {
+                        self.currentTime = clamped
+                    }
+                    self.updateCurrentChapter()
+                    self.updateNowPlayingInfo()
+                } else {
+                    print("[AudioPlayer] Seek to \(clamped)s was cancelled or failed")
+                }
             }
         }
     }
@@ -230,16 +309,36 @@ final class AudioPlayerManager: ObservableObject {
         seek(to: chapter.startSeconds)
     }
     
+    /// Skip interval used for prev/next when no chapters are available (5 minutes)
+    private let chapterlessSkipInterval: Double = 300
+    
     func nextChapter() {
-        guard let current = currentChapter else { return }
+        if !hasChapters {
+            skipForward(chapterlessSkipInterval)
+            return
+        }
+        guard let current = currentChapter else {
+            skipForward(chapterlessSkipInterval)
+            return
+        }
         let nextIndex = current.chapterIndex + 1
         if let next = chapters.first(where: { $0.chapterIndex == nextIndex }) {
             goToChapter(next)
+        } else {
+            // At the last chapter — skip forward instead of doing nothing
+            skipForward(chapterlessSkipInterval)
         }
     }
     
     func previousChapter() {
-        guard let current = currentChapter else { return }
+        if !hasChapters {
+            skipBackward(chapterlessSkipInterval)
+            return
+        }
+        guard let current = currentChapter else {
+            skipBackward(chapterlessSkipInterval)
+            return
+        }
         // If more than 3 seconds into chapter, restart it. Otherwise go to previous.
         if currentTime - current.startSeconds > 3 {
             goToChapter(current)
@@ -254,13 +353,275 @@ final class AudioPlayerManager: ObservableObject {
     }
     
     func stop() {
-        Task { await syncPosition() }
+        if currentPodcastEpisode != nil {
+            Task { await syncPodcastPosition() }
+        } else {
+            Task { await syncPosition() }
+        }
+        // Capture audiobook state before clearing, so widget shows last listened book
+        let lastBook = currentAudiobook
+        let lastProgress = progress
+        let lastCurrentTime = currentTime
+        let lastDuration = duration
+        let lastChapterTitle = currentChapter?.title
         stopInternal()
         currentAudiobook = nil
+        currentPodcastEpisode = nil
+        currentPodcast = nil
         chapters = []
         currentChapter = nil
         playerError = nil
+        nowPlayingArtwork = nil
         clearNowPlayingInfo()
+        // Push last book info to widget with isPlaying=false instead of clearing
+        if let book = lastBook {
+            let nowPlaying = WidgetNowPlaying(
+                audiobookId: book.id,
+                title: book.title,
+                author: book.author,
+                coverUrl: book.coverUrl,
+                progress: lastProgress,
+                currentTime: lastCurrentTime,
+                duration: lastDuration,
+                isPlaying: false,
+                chapterTitle: lastChapterTitle,
+                updatedAt: Date()
+            )
+            WidgetDataManager.shared.updateNowPlaying(nowPlaying)
+            WidgetDataManager.shared.reloadWidgets()
+        }
+    }
+    
+    // MARK: - Background Download for Seek Support
+    
+    /// Downloads the audiobook locally in the background, then swaps the player to local file
+    /// so that seeking/scrubbing works (streaming MP3 without Range support can't seek).
+    private func startBackgroundDownloadForSeek(audiobook: Audiobook) {
+        backgroundDownloadTask?.cancel()
+        isDownloadingForSeek = true
+        downloadForSeekProgress = 0
+        
+        print("[AudioPlayer] Starting background download for seek support: \(audiobook.id)")
+        
+        backgroundDownloadTask = Task {
+            do {
+                let localURL = try await service.downloadToDevice(audiobook: audiobook) { [weak self] progress in
+                    Task { @MainActor in
+                        self?.downloadForSeekProgress = progress
+                    }
+                }
+                
+                guard !Task.isCancelled else { return }
+                guard self.currentAudiobook?.id == audiobook.id else { return }
+                
+                print("[AudioPlayer] Background download complete, switching to local file")
+                await self.switchToLocalFile(localURL, for: audiobook)
+                
+            } catch {
+                print("[AudioPlayer] Background download failed: \(error)")
+            }
+            
+            self.isDownloadingForSeek = false
+        }
+    }
+    
+    /// Seamlessly swap the streaming player to a local file, preserving position and playback state.
+    private func switchToLocalFile(_ localURL: URL, for audiobook: Audiobook) async {
+        guard currentAudiobook?.id == audiobook.id else { return }
+        
+        let savedPosition = currentTime
+        let wasPlaying = isPlaying
+        let savedSpeed = playbackSpeed
+        
+        // Tear down current observers (but don't reset state)
+        if let observer = timeObserver {
+            player?.removeTimeObserver(observer)
+            timeObserver = nil
+        }
+        statusObservation?.invalidate()
+        durationObservation?.invalidate()
+        bufferEmptyObservation?.invalidate()
+        bufferKeepUpObservation?.invalidate()
+        
+        // Create new player with local file
+        let asset = AVURLAsset(url: localURL)
+        let newItem = AVPlayerItem(asset: asset)
+        playerItem = newItem
+        player?.replaceCurrentItem(with: newItem)
+        
+        // Re-setup observers
+        observePlayerItem()
+        
+        // Wait for ready, then seek and resume
+        let tolerance = CMTime(seconds: 0.5, preferredTimescale: 600)
+        let seekTime = CMTime(seconds: savedPosition, preferredTimescale: 600)
+        
+        // Update duration from local file
+        do {
+            let localDuration = try await asset.load(.duration).seconds
+            if localDuration.isFinite && localDuration > 0 {
+                duration = localDuration
+                print("[AudioPlayer] Local file duration: \(localDuration)s")
+            }
+        } catch {
+            print("[AudioPlayer] Could not load local duration: \(error)")
+        }
+        
+        player?.seek(to: seekTime, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.currentTime = savedPosition
+                if wasPlaying {
+                    self.player?.rate = Float(savedSpeed)
+                    self.isPlaying = true
+                }
+                self.startTimeObservation()
+                self.updateNowPlayingInfo()
+                print("[AudioPlayer] Switched to local file at \(formatTime(savedPosition))")
+            }
+        }
+    }
+    
+    // MARK: - Paper Audio Playback
+    
+    /// Play a paper audio stream by building an Audiobook wrapper and using the paper audio stream URL
+    func playPaperAudio(audiobook: Audiobook, jobId: String) async {
+        // If same paper audio, just resume
+        if currentAudiobook?.id == audiobook.id, player != nil {
+            resume()
+            return
+        }
+        
+        // Save current position before switching
+        if currentAudiobook != nil {
+            await syncPosition()
+        }
+        
+        // Reset state
+        stopInternal()
+        playerError = nil
+        currentAudiobook = audiobook
+        isBuffering = true
+        
+        do {
+            try audioSession.configureForAudiobookPlayback()
+            
+            // Fetch manifest to build chapters
+            let manifest = try await PaperAudioService.shared.fetchManifest(jobId: jobId)
+            chapters = manifest.sections.enumerated().map { index, section in
+                AudiobookChapter(
+                    id: index,
+                    audiobookId: audiobook.id,
+                    title: section.name,
+                    startSeconds: section.startSec,
+                    endSeconds: section.startSec + section.durationSec,
+                    chapterIndex: index,
+                    summary: nil
+                )
+            }
+            
+            // Build streaming URL with auth
+            let streamURL = try PaperAudioService.shared.streamURL(jobId: jobId)
+            let headers = try PaperAudioService.shared.authHeaders()
+            
+            print("[AudioPlayer] Streaming paper audio: \(streamURL)")
+            let asset = AVURLAsset(
+                url: streamURL,
+                options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
+            )
+            
+            playerItem = AVPlayerItem(asset: asset)
+            player = AVPlayer(playerItem: playerItem!)
+            player?.automaticallyWaitsToMinimizeStalling = true
+            
+            observePlayerItem()
+            observePlayerReadiness(startPosition: 0)
+            
+        } catch {
+            print("[AudioPlayer] Error starting paper audio playback: \(error)")
+            playerError = error.localizedDescription
+            isBuffering = false
+        }
+    }
+    
+    // MARK: - Podcast Episode Playback
+    
+    func playPodcastEpisode(episode: PodcastEpisode, podcast: Podcast) async {
+        // If same episode, just resume
+        if currentPodcastEpisode?.id == episode.id, player != nil {
+            resume()
+            return
+        }
+        
+        // Save current position before switching
+        if currentPodcastEpisode != nil {
+            await syncPodcastPosition()
+        } else if currentAudiobook != nil {
+            await syncPosition()
+        }
+        
+        // Reset state
+        stopInternal()
+        playerError = nil
+        currentAudiobook = nil
+        currentPodcastEpisode = episode
+        currentPodcast = podcast
+        chapters = []
+        currentChapter = nil
+        isBuffering = true
+        nowPlayingArtwork = nil
+        
+        // Load artwork for lock screen / Control Center
+        loadNowPlayingArtwork(from: episode.artworkUrl ?? podcast.artworkUrl)
+        
+        do {
+            try audioSession.configureForAudiobookPlayback()
+            
+            // Fetch saved playback position
+            let savedState = try? await PodcastService.shared.fetchPlaybackState(episodeId: episode.id)
+            let startPosition = savedState?.positionSeconds ?? 0
+            if let savedSpeed = savedState?.playbackSpeed, savedSpeed > 0 {
+                playbackSpeed = savedSpeed
+            }
+            
+            // Play directly from podcast CDN (no auth headers needed)
+            guard let url = URL(string: episode.audioUrl) else {
+                playerError = "Invalid audio URL"
+                isBuffering = false
+                return
+            }
+            
+            print("[AudioPlayer] Streaming podcast episode: \(url)")
+            let asset = AVURLAsset(url: url)
+            
+            playerItem = AVPlayerItem(asset: asset)
+            player = AVPlayer(playerItem: playerItem!)
+            player?.automaticallyWaitsToMinimizeStalling = true
+            
+            observePlayerItem()
+            observePlayerReadiness(startPosition: startPosition)
+            
+        } catch {
+            print("[AudioPlayer] Error starting podcast playback: \(error)")
+            playerError = error.localizedDescription
+            isBuffering = false
+        }
+    }
+    
+    private func syncPodcastPosition() async {
+        guard let episode = currentPodcastEpisode else { return }
+        guard abs(currentTime - lastSyncedPosition) > syncThreshold else { return }
+        
+        do {
+            try await PodcastService.shared.updatePlaybackState(
+                episodeId: episode.id,
+                position: currentTime,
+                speed: playbackSpeed
+            )
+            lastSyncedPosition = currentTime
+        } catch {
+            print("[AudioPlayer] Podcast position sync failed: \(error)")
+        }
     }
     
     // MARK: - Private Stop
@@ -272,10 +633,15 @@ final class AudioPlayerManager: ObservableObject {
         }
         positionSyncTask?.cancel()
         positionSyncTask = nil
+        backgroundDownloadTask?.cancel()
+        backgroundDownloadTask = nil
+        isDownloadingForSeek = false
         statusObservation?.invalidate()
+        durationObservation?.invalidate()
         bufferEmptyObservation?.invalidate()
         bufferKeepUpObservation?.invalidate()
         statusObservation = nil
+        durationObservation = nil
         bufferEmptyObservation = nil
         bufferKeepUpObservation = nil
         player?.pause()
@@ -291,19 +657,30 @@ final class AudioPlayerManager: ObservableObject {
     // MARK: - Now Playing Info
     
     private func updateNowPlayingInfo() {
-        guard let audiobook = currentAudiobook else { return }
-        
         var info: [String: Any] = [
-            MPMediaItemPropertyTitle: audiobook.title,
-            MPMediaItemPropertyArtist: audiobook.author,
             MPMediaItemPropertyPlaybackDuration: duration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? playbackSpeed : 0.0,
             MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0
         ]
         
-        if let narrator = audiobook.narrator {
-            info[MPMediaItemPropertyAlbumTitle] = "Narrated by \(narrator)"
+        if let audiobook = currentAudiobook {
+            info[MPMediaItemPropertyTitle] = audiobook.title
+            info[MPMediaItemPropertyArtist] = audiobook.author
+            
+            if let narrator = audiobook.narrator {
+                info[MPMediaItemPropertyAlbumTitle] = "Narrated by \(narrator)"
+            }
+        } else if let episode = currentPodcastEpisode {
+            info[MPMediaItemPropertyTitle] = episode.title
+            info[MPMediaItemPropertyArtist] = currentPodcast?.title ?? ""
+            info[MPMediaItemPropertyAlbumTitle] = currentPodcast?.author ?? ""
+        } else {
+            return
+        }
+        
+        if let artwork = nowPlayingArtwork {
+            info[MPMediaItemPropertyArtwork] = artwork
         }
         
         if !chapters.isEmpty {
@@ -314,6 +691,24 @@ final class AudioPlayerManager: ObservableObject {
         }
         
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+    
+    private func loadNowPlayingArtwork(from urlString: String?) {
+        guard let urlString = urlString, let url = URL(string: urlString) else { return }
+        
+        Task {
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                guard let image = UIImage(data: data) else { return }
+                
+                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                self.nowPlayingArtwork = artwork
+                self.updateNowPlayingInfo()
+                print("[AudioPlayer] Now playing artwork loaded")
+            } catch {
+                print("[AudioPlayer] Failed to load artwork: \(error)")
+            }
+        }
     }
     
     private func clearNowPlayingInfo() {
@@ -390,8 +785,8 @@ final class AudioPlayerManager: ObservableObject {
     
     private func handleBookmarkCommand() {
         print("[AudioPlayer] handleBookmarkCommand called, isCreatingHighlight=\(isCreatingHighlight)")
-        guard let audiobook = currentAudiobook else {
-            print("[AudioPlayer] No current audiobook, ignoring bookmark")
+        guard currentAudiobook != nil || currentPodcastEpisode != nil else {
+            print("[AudioPlayer] No current content, ignoring bookmark")
             return
         }
         
@@ -413,24 +808,52 @@ final class AudioPlayerManager: ObservableObject {
         isCreatingHighlight = true
         
         let position = currentTime
-        let chapter = currentChapter?.title
-        let isTranscribed = audiobook.transcribed
-        let bookId = audiobook.id
         
-        print("[AudioPlayer] Bookmark triggered at \(formatTime(position))")
-        
-        Task {
-            let highlightId = await HighlightManager.shared.createHighlight(
-                audiobookId: bookId,
-                positionSeconds: position,
-                chapterTitle: chapter,
-                isTranscribed: isTranscribed
-            )
+        if let audiobook = currentAudiobook {
+            // Audiobook highlight
+            let chapter = currentChapter?.title
+            let isTranscribed = audiobook.transcribed
+            let bookId = audiobook.id
             
-            await MainActor.run {
-                self.lastHighlightId = highlightId
-                self.isCreatingHighlight = false
-                print("[AudioPlayer] Bookmark creation complete: \(highlightId.prefix(8))...")
+            print("[AudioPlayer] Audiobook bookmark at \(formatTime(position))")
+            
+            Task {
+                let highlightId = await HighlightManager.shared.createHighlight(
+                    audiobookId: bookId,
+                    positionSeconds: position,
+                    chapterTitle: chapter,
+                    isTranscribed: isTranscribed
+                )
+                
+                await MainActor.run {
+                    self.lastHighlightId = highlightId
+                    self.isCreatingHighlight = false
+                    print("[AudioPlayer] Audiobook bookmark complete: \(highlightId.prefix(8))...")
+                }
+            }
+        } else if let episode = currentPodcastEpisode {
+            // Podcast highlight
+            let isTranscribed = episode.isTranscribed
+            let episodeId = episode.id
+            let podcastId = episode.podcastId
+            let episodeTitle = episode.title
+            
+            print("[AudioPlayer] Podcast bookmark at \(formatTime(position))")
+            
+            Task {
+                let highlightId = await PodcastHighlightManager.shared.createHighlight(
+                    episodeId: episodeId,
+                    podcastId: podcastId,
+                    positionSeconds: position,
+                    episodeTitle: episodeTitle,
+                    isTranscribed: isTranscribed
+                )
+                
+                await MainActor.run {
+                    self.lastHighlightId = highlightId
+                    self.isCreatingHighlight = false
+                    print("[AudioPlayer] Podcast bookmark complete: \(highlightId.prefix(8))...")
+                }
             }
         }
         
@@ -493,11 +916,18 @@ final class AudioPlayerManager: ObservableObject {
                 try? await Task.sleep(nanoseconds: 30_000_000_000) // 30 seconds
                 guard !Task.isCancelled else { break }
                 await syncPosition()
+                pushNowPlayingToWidgetIfNeeded()
             }
         }
     }
     
     private func syncPosition() async {
+        // Handle podcast episodes separately
+        if currentPodcastEpisode != nil {
+            await syncPodcastPosition()
+            return
+        }
+        
         guard let audiobook = currentAudiobook else { return }
         guard abs(currentTime - lastSyncedPosition) > syncThreshold else { return }
         
@@ -547,8 +977,113 @@ final class AudioPlayerManager: ObservableObject {
     
     // MARK: - Player Item Observation
     
+    // MARK: - Widget Data Push
+    
+    private var lastWidgetPushTime: Date = .distantPast
+    private var lastCachedCoverId: String?
+    
+    func pushNowPlayingToWidget() {
+        guard let audiobook = currentAudiobook else {
+            WidgetDataManager.shared.updateNowPlaying(nil)
+            WidgetDataManager.shared.reloadWidgets()
+            return
+        }
+        
+        let nowPlaying = WidgetNowPlaying(
+            audiobookId: audiobook.id,
+            title: audiobook.title,
+            author: audiobook.author,
+            coverUrl: audiobook.coverUrl,
+            progress: progress,
+            currentTime: currentTime,
+            duration: duration,
+            isPlaying: isPlaying,
+            chapterTitle: currentChapter?.title,
+            updatedAt: Date()
+        )
+        
+        WidgetDataManager.shared.updateNowPlaying(nowPlaying)
+        WidgetDataManager.shared.reloadWidgets()
+        lastWidgetPushTime = Date()
+        
+        // Cache cover image to App Group container for widget (only once per book)
+        if lastCachedCoverId != audiobook.id {
+            cacheWidgetCoverImage(for: audiobook)
+        }
+    }
+    
+    private func cacheWidgetCoverImage(for audiobook: Audiobook) {
+        let bookId = audiobook.id
+        
+        // Check in-memory cache first
+        if let coverUrl = audiobook.coverUrl, let cached = CoverImageCache.shared.get(coverUrl) {
+            print("[Widget] Cover found in memory cache for \(bookId)")
+            if let jpegData = cached.jpegData(compressionQuality: 0.7) {
+                WidgetDataManager.shared.saveCoverImage(jpegData, for: bookId)
+                WidgetDataManager.shared.clearOldCoverImages(except: bookId)
+                lastCachedCoverId = bookId
+                WidgetDataManager.shared.reloadWidgets()
+            }
+            return
+        }
+        
+        // Fetch asynchronously
+        guard let coverUrl = audiobook.coverUrl, !coverUrl.isEmpty else {
+            print("[Widget] No coverUrl for \(bookId)")
+            return
+        }
+        print("[Widget] Fetching cover for widget: \(coverUrl)")
+        Task { [coverUrl] in
+            do {
+                let data: Data
+                if coverUrl.hasPrefix("http") {
+                    let (fetchedData, _) = try await URLSession.shared.data(from: URL(string: coverUrl)!)
+                    data = fetchedData
+                } else {
+                    data = try await LibroAIService.shared.fetchCoverImageData(coverPath: coverUrl)
+                }
+                print("[Widget] Cover fetched: \(data.count) bytes")
+                if let image = UIImage(data: data),
+                   let jpegData = image.jpegData(compressionQuality: 0.7) {
+                    WidgetDataManager.shared.saveCoverImage(jpegData, for: bookId)
+                    WidgetDataManager.shared.clearOldCoverImages(except: bookId)
+                    self.lastCachedCoverId = bookId
+                    WidgetDataManager.shared.reloadWidgets()
+                    print("[Widget] Cover saved and widget reloaded for \(bookId)")
+                }
+            } catch {
+                print("[Widget] Failed to cache cover for widget: \(error)")
+            }
+        }
+    }
+    
+    private func pushNowPlayingToWidgetIfNeeded() {
+        // Throttle periodic updates to every 60 seconds
+        guard Date().timeIntervalSince(lastWidgetPushTime) >= 60 else { return }
+        pushNowPlayingToWidget()
+    }
+    
+    // MARK: - Player Item Observation
+    
     private func observePlayerItem() {
         guard let playerItem = playerItem else { return }
+        
+        // Observe duration — for MP3 streams, duration may become available after buffering
+        durationObservation = playerItem.observe(\.duration, options: [.new]) { [weak self] item, _ in
+            Task { @MainActor in
+                guard let self = self else { return }
+                let newDuration = item.duration.seconds
+                let metadataDuration = self.currentAudiobook?.durationSeconds ?? 0
+                // Only accept if it's reasonable (at least 50% of metadata, or no metadata to compare)
+                if newDuration.isFinite && newDuration > 0 && newDuration > self.duration {
+                    if metadataDuration <= 0 || newDuration >= metadataDuration * 0.5 {
+                        print("[AudioPlayer] Duration updated from stream: \(newDuration)s")
+                        self.duration = newDuration
+                        self.updateNowPlayingInfo()
+                    }
+                }
+            }
+        }
         
         bufferEmptyObservation = playerItem.observe(\.isPlaybackBufferEmpty, options: [.new]) { [weak self] _, change in
             Task { @MainActor in
@@ -576,13 +1111,34 @@ final class AudioPlayerManager: ObservableObject {
                 
                 switch item.status {
                 case .readyToPlay:
-                    self.duration = item.duration.seconds.isFinite ? item.duration.seconds : 0
+                    let itemDuration = item.duration.seconds
+                    let metadataDuration = self.currentAudiobook?.durationSeconds ?? 0
+                    
+                    if itemDuration.isFinite && itemDuration > 0 && (metadataDuration <= 0 || itemDuration >= metadataDuration * 0.5) {
+                        // AVPlayer duration looks reasonable (at least 50% of metadata)
+                        self.duration = itemDuration
+                    } else if metadataDuration > 0 {
+                        // AVPlayer reported nothing, or a suspiciously small value — use metadata
+                        print("[AudioPlayer] AVPlayer duration (\(itemDuration)s) too small vs metadata (\(metadataDuration)s), using metadata")
+                        self.duration = metadataDuration
+                    } else if let episode = self.currentPodcastEpisode, let epDuration = episode.durationSeconds, epDuration > 0 {
+                        if itemDuration.isFinite && itemDuration > 0 && itemDuration >= epDuration * 0.5 {
+                            self.duration = itemDuration
+                        } else {
+                            print("[AudioPlayer] Using podcast episode metadata duration: \(epDuration)s")
+                            self.duration = epDuration
+                        }
+                    } else if itemDuration.isFinite && itemDuration > 0 {
+                        self.duration = itemDuration
+                    }
                     self.isBuffering = false
                     
                     // Seek to saved position
                     if startPosition > 0 {
                         let time = CMTime(seconds: startPosition, preferredTimescale: 600)
-                        self.player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+                        let isMP3 = self.currentAudiobook?.format == .mp3
+                        let tol = isMP3 ? CMTime(seconds: 0.5, preferredTimescale: 600) : CMTime.zero
+                        self.player?.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { [weak self] _ in
                             Task { @MainActor in
                                 self?.currentTime = startPosition
                                 self?.updateCurrentChapter()
@@ -591,6 +1147,7 @@ final class AudioPlayerManager: ObservableObject {
                                 self?.updateNowPlayingInfo()
                                 self?.startTimeObservation()
                                 self?.startPositionSyncTimer()
+                                self?.pushNowPlayingToWidget()
                             }
                         }
                     } else {
@@ -601,6 +1158,7 @@ final class AudioPlayerManager: ObservableObject {
                         self.updateNowPlayingInfo()
                         self.startTimeObservation()
                         self.startPositionSyncTimer()
+                        self.pushNowPlayingToWidget()
                     }
                     
                 case .failed:

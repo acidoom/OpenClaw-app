@@ -6,7 +6,8 @@
 
 <p align="center">
   <strong>AI-Powered Voice Conversation iOS App</strong><br>
-  Built with SwiftUI and ElevenLabs Conversational AI SDK
+  Built with SwiftUI and ElevenLabs Conversational AI SDK<br>
+  Audiobooks, Podcasts, Paper Audio, Zotero Library, and more
 </p>
 
 <p align="center">
@@ -35,7 +36,11 @@
 - [TODO List](#todo-list)
 - [Research Lab](#research-lab)
 - [Audiobooks & Libro.fm](#audiobooks--librofm)
+- [Podcasts](#podcasts)
+- [Paper Audio](#paper-audio)
 - [Zotero Library](#zotero-library)
+- [iPad Support](#ipad-support)
+- [Widgets](#widgets)
 
 ---
 
@@ -57,7 +62,11 @@ OpenClaw is a native iOS application that enables real-time voice conversations 
 - **TODO List** - Bidirectional sync with OpenClaw Gateway for task management
 - **Research Lab** - Local storage for organizing research projects and notes
 - **Audiobooks** - Full audiobook player with Libro.fm integration, chapter navigation, and AI highlights
-- **Zotero Library** - Full integration with Zotero for managing papers, notes, and references
+- **Podcasts** - Subscribe to podcasts via Apple Podcasts search, stream episodes, AI highlights with Whisper transcription
+- **Paper Audio** - Convert Zotero research papers into spoken audio using Claude and ElevenLabs TTS
+- **Zotero Library** - Full integration with Zotero for managing papers, notes, references, and PDF viewing with Apple Pencil annotations
+- **iPad Support** - Adaptive layout with sidebar navigation and persistent audio player for iPad
+- **Home Screen Widgets** - TODO, Now Playing, and Daily Dashboard widgets for quick access
 
 ---
 
@@ -68,77 +77,116 @@ OpenClaw follows a clean MVVM (Model-View-ViewModel) architecture with clear sep
 ```
 OpenClaw/
 ├── App/
-│   ├── AppState.swift              # Global application state
-│   ├── AppDelegate.swift           # APNs registration callbacks
-│   └── NotificationDelegate.swift  # Foreground notification handling
+│   ├── AdaptiveRootView.swift        # Adaptive layout (iPhone TabView / iPad sidebar)
+│   ├── SidebarView.swift             # iPad sidebar navigation
+│   ├── AppState.swift                # Global application state
+│   ├── AppDelegate.swift             # APNs registration callbacks
+│   └── NotificationDelegate.swift    # Foreground notification handling
 ├── Extensions/
-│   └── Color+Theme.swift           # Color palette and theming
+│   └── Color+Theme.swift             # Color palette and theming
 ├── Features/
 │   ├── Conversation/
-│   │   ├── ConversationView.swift      # Main conversation UI
-│   │   ├── ConversationViewModel.swift # Conversation business logic
-│   │   ├── MessageBubbleView.swift     # Chat message component
-│   │   └── OrbVisualizerView.swift     # Animated voice visualizer
+│   │   ├── ConversationView.swift        # Main conversation UI
+│   │   ├── ConversationViewModel.swift   # Conversation business logic
+│   │   ├── MessageBubbleView.swift       # Chat message component
+│   │   └── OrbVisualizerView.swift       # Animated voice visualizer
 │   ├── TodoList/
-│   │   ├── TodoListView.swift          # TODO list UI with edit sheet
-│   │   └── TodoListViewModel.swift     # TODO business logic & Gateway sync
+│   │   ├── TodoListView.swift            # TODO list UI with edit sheet
+│   │   └── TodoListViewModel.swift       # TODO business logic & Gateway sync
 │   ├── ResearchLab/
-│   │   ├── ResearchLabView.swift       # Research projects list
-│   │   ├── ResearchLabViewModel.swift  # Research management logic
-│   │   └── ProjectDetailView.swift     # Individual project view
+│   │   ├── ResearchLabView.swift         # Research projects list
+│   │   ├── ResearchLabViewModel.swift    # Research management logic
+│   │   └── ProjectDetailView.swift       # Individual project view
 │   ├── Audiobooks/
-│   │   ├── AudiobooksView.swift         # Library grid with search
-│   │   ├── AudiobooksViewModel.swift    # Library data loading & sync
-│   │   ├── AudiobookDetailView.swift    # Book detail with chapters & highlights
-│   │   ├── AudioPlayerView.swift        # Full-screen playback controls
-│   │   ├── MiniPlayerView.swift         # Persistent mini player bar
-│   │   ├── HighlightsListView.swift     # AI highlights list with retry/delete
-│   │   ├── CoverImageView.swift         # Authenticated cover image loader
-│   │   ├── LibroFmBooksView.swift       # Browse & download Libro.fm purchases
-│   │   └── LibroFmSettingsSheet.swift   # Libro.fm account login sheet
+│   │   ├── AudiobooksView.swift           # Library grid with search
+│   │   ├── AudiobooksViewModel.swift      # Library data loading & sync
+│   │   ├── AudiobookDetailView.swift      # Book detail with chapters & highlights
+│   │   ├── AudioPlayerView.swift          # Full-screen playback controls
+│   │   ├── MiniPlayerView.swift           # Persistent mini player bar
+│   │   ├── SidebarPlayerView.swift        # iPad persistent sidebar player
+│   │   ├── HighlightsListView.swift       # AI highlights list with retry/delete
+│   │   ├── CoverImageView.swift           # Authenticated cover image loader
+│   │   ├── LibroFmBooksView.swift         # Browse & download Libro.fm purchases
+│   │   └── LibroFmSettingsSheet.swift     # Libro.fm account login sheet
+│   ├── Podcasts/
+│   │   ├── PodcastsView.swift             # Subscriptions grid + latest episodes
+│   │   ├── PodcastsViewModel.swift        # Subscription & episode management
+│   │   ├── PodcastDetailView.swift        # Episode list for a podcast
+│   │   ├── PodcastGridCell.swift          # Podcast artwork grid cell
+│   │   ├── PodcastSearchView.swift        # Apple Podcasts search & subscribe
+│   │   ├── EpisodeDetailView.swift        # Episode info & playback controls
+│   │   └── PodcastHighlightsListView.swift # AI highlights with references
+│   ├── PaperAudio/
+│   │   ├── PaperAudioJobsView.swift       # Job list with status tracking
+│   │   ├── PaperAudioPlayerView.swift     # Section-based audio player
+│   │   ├── PaperAudioViewModel.swift      # Job polling & playback state
+│   │   └── GeneratePaperAudioSheet.swift  # Generation config sheet
 │   ├── ZoteroLibrary/
-│   │   ├── ZoteroLibraryView.swift     # Zotero library browser
-│   │   ├── ZoteroLibraryViewModel.swift # Library state and operations
-│   │   ├── ZoteroItemDetailView.swift  # Item details and note editor
-│   │   └── ZoteroAddItemView.swift     # Create new library items
+│   │   ├── ZoteroLibraryView.swift        # Zotero library browser
+│   │   ├── ZoteroLibraryViewModel.swift   # Library state and operations
+│   │   ├── ZoteroItemDetailView.swift     # Item details and note editor
+│   │   ├── ZoteroAddItemView.swift        # Create new library items
+│   │   └── PDFViewer/
+│   │       ├── PDFViewerView.swift        # PDF viewer with toolbar
+│   │       ├── PDFViewerViewModel.swift   # PDF state management
+│   │       ├── PDFViewRepresentable.swift # PDFKit + PencilKit integration
+│   │       └── PDFThumbnailSidebarView.swift # Page thumbnail sidebar (iPad)
 │   └── Settings/
-│       ├── SettingsView.swift          # Settings UI
-│       └── SettingsViewModel.swift     # Settings business logic
+│       ├── SettingsView.swift             # Settings UI
+│       └── SettingsViewModel.swift        # Settings business logic
 ├── Models/
-│   ├── ConversationTypes.swift     # Conversation data models
-│   ├── AudiobookTypes.swift        # Audiobook, chapter, highlight, transcript models
-│   ├── TodoTypes.swift             # TODO item, priority, and list models
-│   ├── ResearchTypes.swift         # Research project models
-│   └── ZoteroTypes.swift           # Zotero API response models
+│   ├── ConversationTypes.swift       # Conversation data models
+│   ├── AudiobookTypes.swift          # Audiobook, chapter, highlight, transcript models
+│   ├── PodcastTypes.swift            # Podcast, episode, highlight, reference models
+│   ├── PaperAudioTypes.swift         # Paper audio job, manifest, section models
+│   ├── TodoTypes.swift               # TODO item, priority, and list models
+│   ├── ResearchTypes.swift           # Research project models
+│   └── ZoteroTypes.swift             # Zotero API response models
 ├── Services/
-│   ├── AudioSessionManager.swift   # Audio session configuration
-│   ├── ConversationManager.swift   # ElevenLabs SDK wrapper
-│   ├── KeychainManager.swift       # Secure credential storage
-│   ├── NetworkMonitor.swift        # Connectivity monitoring
-│   ├── TokenService.swift          # API token management
-│   ├── PushNotificationManager.swift   # APNs registration and permissions
-│   ├── GatewayNotificationService.swift # Device registration with Gateway
-│   ├── TodoService.swift           # TODO sync with Gateway (JSON API)
-│   ├── LibroAIService.swift         # Audiobook backend API client
-│   ├── AudioPlayerManager.swift     # AVPlayer-based audiobook playback
-│   ├── HighlightManager.swift       # AI highlight orchestration
-│   ├── HighlightStore.swift         # Local JSON persistence for highlights
-│   ├── GatewayChatService.swift     # OpenAI-compatible chat for AI summaries
-│   ├── ResearchStorageService.swift # Local research project storage
-│   └── ZoteroService.swift         # Zotero Web API integration
-├── Assets.xcassets                 # Images, colors, app icon
-└── OpenClawApp.swift               # App entry point
+│   ├── AudioSessionManager.swift     # Audio session configuration
+│   ├── ConversationManager.swift     # ElevenLabs SDK wrapper
+│   ├── KeychainManager.swift         # Secure credential storage
+│   ├── NetworkMonitor.swift          # Connectivity monitoring
+│   ├── TokenService.swift            # API token management
+│   ├── PushNotificationManager.swift     # APNs registration and permissions
+│   ├── GatewayNotificationService.swift  # Device registration with Gateway
+│   ├── TodoService.swift             # TODO sync with Gateway (JSON API)
+│   ├── LibroAIService.swift          # Audiobook backend API client
+│   ├── AudioPlayerManager.swift      # AVPlayer playback (audiobooks, podcasts, paper audio)
+│   ├── HighlightManager.swift        # Audiobook AI highlight orchestration
+│   ├── HighlightStore.swift          # Local JSON persistence for audiobook highlights
+│   ├── PodcastService.swift          # Podcast subscription & episode API client
+│   ├── PodcastHighlightManager.swift # Podcast AI highlight orchestration
+│   ├── PodcastHighlightStore.swift   # Local JSON persistence for podcast highlights
+│   ├── PaperAudioService.swift       # Paper audio job API client
+│   ├── PDFCacheManager.swift         # Zotero PDF download & cache
+│   ├── PDFAnnotationStore.swift      # PencilKit annotation persistence
+│   ├── GatewayChatService.swift      # OpenAI-compatible chat for AI summaries
+│   ├── ResearchStorageService.swift  # Local research project storage
+│   ├── ZoteroService.swift           # Zotero Web API integration
+│   ├── WidgetDataManager.swift       # Shared data for widget extension
+│   └── WidgetModels.swift            # Shared models for widget extension
+├── Assets.xcassets                   # Images, colors, app icon
+└── OpenClawApp.swift                 # App entry point
 
-Gateway/                            # OpenClaw Gateway Plugin
-├── index.ts                        # Plugin entry point
-├── apns-notifier.ts                # HTTP/2 APNs client
-├── ios-hooks.ts                    # Device registration hooks
-├── openclaw.plugin.json            # Plugin manifest
-├── README.md                       # Plugin documentation
-├── SETUP_DGX_SPARK.md              # Setup guide for DGX Spark
-├── TODO_SKILL.md                   # AI skill instructions for TODO management
-├── LIBROAI_API.md                  # Audiobook backend API specification
-└── BACKEND_CORRECTIONS.md          # Backend bug reports and new endpoint specs
+OpenClawWidgets/                      # Widget Extension
+├── OpenClawWidgets.swift             # Widget bundle entry point
+├── TodoWidget.swift                  # TODO list home screen widget
+├── NowPlayingWidget.swift            # Now playing audio widget
+├── DailyDashboardWidget.swift        # Combined daily overview widget
+├── WidgetDataManager.swift           # Widget data provider
+└── WidgetModels.swift                # Widget data models
+
+Gateway/                              # OpenClaw Gateway Plugin
+├── apns-notifier.ts                  # HTTP/2 APNs client
+├── ios-hooks.ts                      # Device registration hooks
+├── openclaw.plugin.json              # Plugin manifest
+├── README.md                         # Plugin documentation
+├── SETUP_DGX_SPARK.md                # Setup guide for DGX Spark
+├── PODCAST_API.md                    # Podcast backend API specification
+├── PAPER_AUDIO_API.md                # Paper audio backend API specification
+├── LIBROAI_API.md                    # Audiobook backend API specification
+└── BACKEND_CORRECTIONS.md            # Backend bug reports and new endpoint specs
 ```
 
 ### Key Components
@@ -154,12 +202,19 @@ Gateway/                            # OpenClaw Gateway Plugin
 | **GatewayNotificationService** | Registers device with OpenClaw Gateway for push notifications |
 | **TodoService** | Actor-based service for bidirectional TODO sync with Gateway via JSON API |
 | **LibroAIService** | Actor-based audiobook backend client — library, streaming, chapters, playback state, Libro.fm integration |
-| **AudioPlayerManager** | Singleton AVPlayer wrapper — playback, seeking, chapters, remote commands, AirPods bookmark trigger |
-| **HighlightManager** | Orchestration actor — creates highlights, fetches transcripts, sends to AI for summarization, syncs to server |
-| **HighlightStore** | Actor-based local JSON persistence for highlights with per-audiobook file storage |
+| **AudioPlayerManager** | Singleton AVPlayer wrapper — playback for audiobooks, podcasts, and paper audio; remote commands, AirPods bookmark trigger |
+| **HighlightManager** | Orchestration actor — creates audiobook highlights, fetches transcripts, sends to AI for summarization, syncs to server |
+| **HighlightStore** | Actor-based local JSON persistence for audiobook highlights with per-book file storage |
+| **PodcastService** | Actor-based podcast API client — subscriptions, episodes, playback state, Apple Podcasts search |
+| **PodcastHighlightManager** | Podcast AI highlight orchestration with reference extraction |
+| **PodcastHighlightStore** | Local JSON persistence for podcast highlights |
+| **PaperAudioService** | Actor-based paper audio API client — job management, manifest fetching, audio streaming |
+| **PDFCacheManager** | Downloads and caches PDFs from Zotero API in Documents/ZoteroPDFs/ |
+| **PDFAnnotationStore** | Persists Apple Pencil annotations as PKDrawing files per PDF page |
 | **GatewayChatService** | OpenAI-compatible chat client used for AI-powered highlight summarization |
 | **ResearchStorageService** | Local storage service for research projects using UserDefaults |
 | **ZoteroService** | Actor-based Zotero Web API client with caching and full CRUD operations |
+| **WidgetDataManager** | Shared data provider for home screen widget extension |
 
 ### Data Flow
 
@@ -552,8 +607,11 @@ If you're using a custom LLM endpoint:
 | **LiveKit** | WebRTC infrastructure |
 | **Security.framework** | Keychain credential storage |
 | **Network.framework** | Connectivity monitoring |
-| **AVFoundation** | Audio session management and audiobook playback |
+| **AVFoundation** | Audio session management and audiobook/podcast/paper audio playback |
 | **MediaPlayer** | Now Playing info, remote command center, AirPods controls |
+| **PDFKit** | PDF rendering and navigation for Zotero papers |
+| **PencilKit** | Apple Pencil annotation support on PDF documents |
+| **WidgetKit** | Home screen widgets (TODO, Now Playing, Daily Dashboard) |
 | **UserNotifications** | Push notification handling |
 
 ---
@@ -922,11 +980,164 @@ OpenClaw integrates with [Zotero](https://www.zotero.org), the free, open-source
 | PATCH | `/users/{id}/items/{key}` | Update items |
 | DELETE | `/users/{id}/items/{key}` | Delete items |
 
+### PDF Viewer
+
+The Zotero integration includes a full PDF viewer for reading papers directly in the app:
+
+- **PDF Rendering** - Native PDFKit-based viewer with smooth scrolling and zoom
+- **Apple Pencil Annotations** - Draw, highlight, and annotate PDFs using PencilKit overlays
+- **Persistent Annotations** - Drawings saved as PKDrawing files per page in Documents/ZoteroAnnotations/
+- **Thumbnail Sidebar** - Page thumbnail navigation sidebar on iPad
+- **PDF Caching** - Downloaded PDFs cached locally in Documents/ZoteroPDFs/ for offline access
+
 ### Notes
 
 - The Zotero API has rate limits; the app uses caching to minimize requests
 - Write operations require a key with write access enabled
 - Notes are stored as child items attached to library items
+
+---
+
+## Podcasts
+
+OpenClaw includes a full podcast player with subscription management, direct CDN streaming, and AI-powered highlights.
+
+### Features
+
+- **Podcast Discovery** - Search Apple Podcasts catalog to find and subscribe to podcasts
+- **Subscription Management** - Subscribe, unsubscribe, and refresh podcast feeds via the backend
+- **Episode Browsing** - View episodes per podcast or see latest episodes across all subscriptions
+- **Direct CDN Streaming** - Episodes stream directly from podcast CDN URLs (no gateway proxy)
+- **Playback Controls** - Full player with speed control, skip forward/backward, seek bar
+- **Playback Position Sync** - Position saved to server every ~30 seconds, resumes where you left off
+- **Mini Player** - Persistent mini player bar while browsing the app
+- **On-Demand Transcription** - Request Whisper transcription for individual episodes
+- **AI Highlights** - Bookmark moments during playback, get AI-generated summaries of the surrounding transcript
+- **Reference Extraction** - Backend automatically extracts papers, books, tools, and people mentioned in highlights
+
+### AI Highlights with References
+
+The podcast highlight system extends the audiobook highlight pattern with automatic reference extraction:
+
+1. **Bookmark** - Tap bookmark or press AirPods during playback
+2. **Transcript** - Fetches 5 minutes of Whisper transcript before the bookmark position
+3. **Summarize** - AI generates a 2-3 sentence summary of the passage
+4. **Extract** - Backend asynchronously extracts referenced papers, books, tools, and people from the transcript
+5. **Display** - Highlights shown with expandable reference cards
+
+### Backend Setup
+
+The podcast feature requires backend endpoints for subscription management, episode storage, playback state, and transcription. See [Gateway/PODCAST_API.md](Gateway/PODCAST_API.md) for the complete API specification.
+
+**Core endpoints:**
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/api/podcasts` | List subscriptions |
+| POST | `/api/podcasts/subscribe` | Subscribe with RSS parsing |
+| DELETE | `/api/podcasts/{id}` | Unsubscribe |
+| GET | `/api/podcasts/{id}/episodes` | Episode list (paginated) |
+| GET | `/api/podcasts/episodes/latest` | Latest episodes across all subscriptions |
+| POST | `/api/podcasts/refresh-all` | Refresh all RSS feeds |
+| GET/PUT | `/api/podcasts/episodes/{id}/playback` | Playback position |
+| POST | `/api/podcasts/episodes/{id}/transcribe` | Request Whisper transcription |
+| GET | `/api/podcasts/episodes/{id}/transcript` | Time-windowed transcript |
+| GET | `/api/podcasts/episodes/{id}/highlights` | List AI highlights |
+| POST | `/api/podcasts/highlights` | Sync highlight from client |
+
+---
+
+## Paper Audio
+
+Paper Audio converts research papers from your Zotero library into spoken audio using Claude for script generation and ElevenLabs for text-to-speech synthesis.
+
+### Features
+
+- **Three Listening Modes:**
+  - **Summary** - 2-5 minute overview of the paper's key contributions
+  - **Runner** - Concise but complete narration optimized for listening during exercise
+  - **Deep Dive** - Section-by-section detailed narration
+- **Configurable Processing** - Skip equations, tables, references; summarize figures; explain jargon
+- **Job Tracking** - Real-time status updates as the pipeline progresses through stages
+- **Section Navigation** - Jump between paper sections during playback
+- **Streaming Playback** - Full HTTP Range support for seeking within the generated audio
+
+### Generation Pipeline
+
+```
+Zotero Paper → Extract Text → Clean Text → Claude Script → ElevenLabs TTS → MP3 Assembly
+```
+
+Pipeline stages: `queued` → `extracting_text` → `cleaning_text` → `generating_script` → `synthesizing_audio` → `assembling_manifest` → `completed`
+
+### Usage
+
+1. Navigate to a paper in the **Zotero** tab
+2. Tap the **speaker icon** to generate audio
+3. Configure mode and processing options
+4. Monitor progress in the **Paper Audio** jobs list
+5. Tap a completed job to play with section navigation
+
+### Backend Setup
+
+See [Gateway/PAPER_AUDIO_API.md](Gateway/PAPER_AUDIO_API.md) for the complete API specification. The backend requires:
+- Zotero API access to fetch paper content
+- Claude API for script generation
+- ElevenLabs API for TTS synthesis
+- Audio file storage with HTTP Range support
+
+**Core endpoints:**
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | `/api/paper-audio/generate` | Start generation job |
+| GET | `/api/paper-audio/jobs` | List all jobs |
+| GET | `/api/paper-audio/jobs/{id}` | Poll job status |
+| GET | `/api/paper-audio/{id}/manifest` | Playback manifest with sections |
+| GET | `/api/paper-audio/{id}/stream` | Stream audio (Range support) |
+| DELETE | `/api/paper-audio/jobs/{id}` | Delete job and audio |
+
+---
+
+## iPad Support
+
+OpenClaw uses an adaptive layout that provides optimized experiences for both iPhone and iPad.
+
+### Layout
+
+- **iPhone** - Standard TabView with 6 tabs (Conversation, TODO, Zotero, Audiobooks, Podcasts, Research Lab)
+- **iPad** - NavigationSplitView with a sidebar for navigation and a persistent audio player column
+
+### iPad Features
+
+- **Sidebar Navigation** - Collapsible sidebar replacing the tab bar
+- **Persistent Audio Player** - 320pt sidebar player column (visible when width > 900pt) showing cover art, playback controls, and highlights
+- **Responsive Grids** - 4-column grids for audiobook and podcast libraries on wider screens
+- **PDF Thumbnail Sidebar** - Collapsible page thumbnail navigation in the PDF viewer
+
+### Key Files
+
+- `AdaptiveRootView.swift` - Branches on `horizontalSizeClass` for iPhone vs iPad layout
+- `SidebarView.swift` - iPad sidebar with navigation links for each section
+- `SidebarPlayerView.swift` - Persistent right-column audio player for iPad
+
+---
+
+## Widgets
+
+OpenClaw includes a Widget Extension with three home screen widgets built with WidgetKit.
+
+### Available Widgets
+
+| Widget | Sizes | Description |
+|--------|-------|-------------|
+| **TODO Widget** | Small, Medium | Shows active TODO items with priority badges and completion status |
+| **Now Playing Widget** | Small, Medium | Displays currently playing audiobook, podcast, or paper audio with artwork |
+| **Daily Dashboard Widget** | Medium, Large | Combined overview of tasks, currently playing audio, and recent activity |
+
+### Setup
+
+Widgets are available automatically after installing the app. Add them via the iOS home screen widget picker. Data is shared between the app and widget extension via a shared App Group container using `WidgetDataManager`.
 
 ---
 

@@ -9,14 +9,19 @@ import SwiftUI
 
 struct MessageBubbleView: View {
     let message: ConversationMessage
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     private var isUser: Bool {
         message.source == .user
     }
     
+    private var spacerLength: CGFloat {
+        horizontalSizeClass == .regular ? 150 : 50
+    }
+    
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            if isUser { Spacer(minLength: 50) }
+            if isUser { Spacer(minLength: spacerLength) }
             
             // Avatar for AI messages
             if !isUser {
@@ -62,7 +67,7 @@ struct MessageBubbleView: View {
                     )
             }
             
-            if !isUser { Spacer(minLength: 50) }
+            if !isUser { Spacer(minLength: spacerLength) }
         }
     }
 }

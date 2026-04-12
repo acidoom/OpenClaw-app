@@ -225,7 +225,7 @@ final class ConversationViewModel: ObservableObject {
         case .openSettings:
             showSettings = true
             
-        case .openResearchLab, .openResearchProject:
+        case .openResearchLab, .openResearchProject, .openTodoList, .openAudiobook, .openPodcast:
             break
         }
     }

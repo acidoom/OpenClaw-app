@@ -7,13 +7,46 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CC69623D2F5DE208006B4742 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC69623C2F5DE208006B4742 /* WidgetKit.framework */; };
+		CC69623F2F5DE208006B4742 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC69623E2F5DE208006B4742 /* SwiftUI.framework */; };
+		CC69624C2F5DE20A006B4742 /* OpenClawWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CC69623A2F5DE208006B4742 /* OpenClawWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CCD7A1512F35B8CE0045D85E /* ElevenLabs in Frameworks */ = {isa = PBXBuildFile; productRef = CCD7A1502F35B8CE0045D85E /* ElevenLabs */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		CC69624A2F5DE20A006B4742 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CC7FE1BF2F351746005622EC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CC6962392F5DE208006B4742;
+			remoteInfo = OpenClawWidgetsExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		CC6962512F5DE20A006B4742 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				CC69624C2F5DE20A006B4742 /* OpenClawWidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		CC6962282F533061006B4742 /* LIBROAI_API.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = LIBROAI_API.md; sourceTree = "<group>"; };
 		CC69622D2F53457C006B4742 /* BACKEND_CORRECTIONS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = BACKEND_CORRECTIONS.md; sourceTree = "<group>"; };
+		CC69623A2F5DE208006B4742 /* OpenClawWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpenClawWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		CC69623C2F5DE208006B4742 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		CC69623E2F5DE208006B4742 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		CC6962522F5DE228006B4742 /* OpenClawWidgetsExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpenClawWidgetsExtension.entitlements; sourceTree = "<group>"; };
+		CC6962732F66978F006B4742 /* PAPER_AUDIO_API.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PAPER_AUDIO_API.md; sourceTree = "<group>"; };
 		CC7FE1C72F351746005622EC /* OpenClaw.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenClaw.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CCB538D22F70476C0041A848 /* PODCAST_API.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PODCAST_API.md; sourceTree = "<group>"; };
 		CCD7A1602F3782660045D85E /* apns-notifier.ts */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.typescript; path = "apns-notifier.ts"; sourceTree = "<group>"; };
 		CCD7A1612F3782870045D85E /* ios-hooks.ts */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.typescript; path = "ios-hooks.ts"; sourceTree = "<group>"; };
 		CCD7A1622F3782A70045D85E /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
@@ -24,6 +57,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		CC6962502F5DE20A006B4742 /* Exceptions for "OpenClawWidgets" folder in "OpenClawWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = CC6962392F5DE208006B4742 /* OpenClawWidgetsExtension */;
+		};
 		CCD7A1642F3783630045D85E /* Exceptions for "OpenClaw" folder in "OpenClaw" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -34,6 +74,14 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		CC6962402F5DE208006B4742 /* OpenClawWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CC6962502F5DE20A006B4742 /* Exceptions for "OpenClawWidgets" folder in "OpenClawWidgetsExtension" target */,
+			);
+			path = OpenClawWidgets;
+			sourceTree = "<group>";
+		};
 		CC7FE1C92F351746005622EC /* OpenClaw */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -45,6 +93,15 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		CC6962372F5DE208006B4742 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC69623F2F5DE208006B4742 /* SwiftUI.framework in Frameworks */,
+				CC69623D2F5DE208006B4742 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		CC7FE1C42F351746005622EC /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -56,10 +113,22 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		CC69623B2F5DE208006B4742 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				CC69623C2F5DE208006B4742 /* WidgetKit.framework */,
+				CC69623E2F5DE208006B4742 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		CC7FE1BE2F351746005622EC = {
 			isa = PBXGroup;
 			children = (
+				CC6962522F5DE228006B4742 /* OpenClawWidgetsExtension.entitlements */,
 				CC7FE1C92F351746005622EC /* OpenClaw */,
+				CC6962402F5DE208006B4742 /* OpenClawWidgets */,
+				CC69623B2F5DE208006B4742 /* Frameworks */,
 				CC7FE1C82F351746005622EC /* Products */,
 				CCD7A15F2F37823B0045D85E /* Gateway */,
 			);
@@ -69,6 +138,7 @@
 			isa = PBXGroup;
 			children = (
 				CC7FE1C72F351746005622EC /* OpenClaw.app */,
+				CC69623A2F5DE208006B4742 /* OpenClawWidgetsExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -85,6 +155,8 @@
 				CCD7A17C2F44E0660045D85E /* TODO_SKILL.md */,
 				CC6962282F533061006B4742 /* LIBROAI_API.md */,
 				CC69622D2F53457C006B4742 /* BACKEND_CORRECTIONS.md */,
+				CC6962732F66978F006B4742 /* PAPER_AUDIO_API.md */,
+				CCB538D22F70476C0041A848 /* PODCAST_API.md */,
 			);
 			path = Gateway;
 			sourceTree = "<group>";
@@ -92,6 +164,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		CC6962392F5DE208006B4742 /* OpenClawWidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CC69624D2F5DE20A006B4742 /* Build configuration list for PBXNativeTarget "OpenClawWidgetsExtension" */;
+			buildPhases = (
+				CC6962362F5DE208006B4742 /* Sources */,
+				CC6962372F5DE208006B4742 /* Frameworks */,
+				CC6962382F5DE208006B4742 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				CC6962402F5DE208006B4742 /* OpenClawWidgets */,
+			);
+			name = OpenClawWidgetsExtension;
+			packageProductDependencies = (
+			);
+			productName = OpenClawWidgetsExtension;
+			productReference = CC69623A2F5DE208006B4742 /* OpenClawWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		CC7FE1C62F351746005622EC /* OpenClaw */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = CC7FE1D22F351746005622EC /* Build configuration list for PBXNativeTarget "OpenClaw" */;
@@ -99,10 +193,12 @@
 				CC7FE1C32F351746005622EC /* Sources */,
 				CC7FE1C42F351746005622EC /* Frameworks */,
 				CC7FE1C52F351746005622EC /* Resources */,
+				CC6962512F5DE20A006B4742 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				CC69624B2F5DE20A006B4742 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				CC7FE1C92F351746005622EC /* OpenClaw */,
@@ -122,9 +218,12 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2630;
+				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
+					CC6962392F5DE208006B4742 = {
+						CreatedOnToolsVersion = 26.4;
+					};
 					CC7FE1C62F351746005622EC = {
 						CreatedOnToolsVersion = 26.3;
 					};
@@ -148,11 +247,19 @@
 			projectRoot = "";
 			targets = (
 				CC7FE1C62F351746005622EC /* OpenClaw */,
+				CC6962392F5DE208006B4742 /* OpenClawWidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		CC6962382F5DE208006B4742 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		CC7FE1C52F351746005622EC /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -163,6 +270,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		CC6962362F5DE208006B4742 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		CC7FE1C32F351746005622EC /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -172,7 +286,81 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		CC69624B2F5DE20A006B4742 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CC6962392F5DE208006B4742 /* OpenClawWidgetsExtension */;
+			targetProxy = CC69624A2F5DE20A006B4742 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		CC69624E2F5DE20A006B4742 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = OpenClawWidgetsExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "OpenClaw/Extensions/Color+Theme.swift";
+				DEVELOPMENT_TEAM = 5PK8J29H77;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OpenClawWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OpenClawWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = carc.ai.OpenClaw.OpenClawWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		CC69624F2F5DE20A006B4742 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = OpenClawWidgetsExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "OpenClaw/Extensions/Color+Theme.swift";
+				DEVELOPMENT_TEAM = 5PK8J29H77;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OpenClawWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OpenClawWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = carc.ai.OpenClaw.OpenClawWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		CC7FE1D02F351746005622EC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -371,6 +559,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		CC69624D2F5DE20A006B4742 /* Build configuration list for PBXNativeTarget "OpenClawWidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC69624E2F5DE20A006B4742 /* Debug */,
+				CC69624F2F5DE20A006B4742 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		CC7FE1C22F351746005622EC /* Build configuration list for PBXProject "OpenClaw" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -80,6 +80,7 @@ final class TodoListViewModel: ObservableObject {
         
         print("[TodoVM] loadTodos done - hasItems: \(hasItems), pending: \(pendingItems.count), completed: \(completedItems.count)")
         isLoading = false
+        updateWidgetData()
     }
     
     func addItem() async {
@@ -230,5 +231,34 @@ final class TodoListViewModel: ObservableObject {
         // Update debug info after save attempt
         debugInfo = await todoService.getDebugInfo()
         isSyncing = false
+        updateWidgetData()
+    }
+    
+    // MARK: - Widget Data Push
+    
+    private func priorityOrder(_ priority: TodoPriority) -> Int {
+        switch priority {
+        case .high: return 0
+        case .medium: return 1
+        case .low: return 2
+        }
+    }
+    
+    private func updateWidgetData() {
+        let widgetItems = pendingItems
+            .sorted { priorityOrder($0.priority) < priorityOrder($1.priority) }
+            .prefix(5)
+            .map { item in
+                WidgetTodoItem(
+                    id: item.id,
+                    title: item.title,
+                    priority: WidgetTodoPriority(rawValue: item.priority.rawValue) ?? .medium,
+                    isCompleted: item.isCompleted,
+                    createdAt: item.createdAt
+                )
+            }
+        
+        WidgetDataManager.shared.updateTodos(Array(widgetItems))
+        WidgetDataManager.shared.reloadWidgets()
     }
 }

@@ -10,6 +10,7 @@ import SwiftUI
 struct AudiobooksView: View {
     @StateObject private var viewModel = AudiobooksViewModel()
     @EnvironmentObject private var playerManager: AudioPlayerManager
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedAudiobook: Audiobook?
     @State private var showingSettings = false
     @State private var showingLibroFmSettings = false
@@ -30,8 +31,8 @@ struct AudiobooksView: View {
                     libraryContent
                 }
                 
-                // Mini player overlay
-                if playerManager.hasActiveSession {
+                // Mini player overlay (iPhone only; iPad handled by AdaptiveRootView)
+                if playerManager.hasActiveSession && horizontalSizeClass != .regular {
                     VStack {
                         Spacer()
                         MiniPlayerView()
@@ -185,7 +186,7 @@ struct AudiobooksView: View {
                     .padding(.top, 80)
                 } else {
                     LazyVGrid(
-                        columns: [GridItem(.flexible()), GridItem(.flexible())],
+                        columns: Array(repeating: GridItem(.flexible()), count: horizontalSizeClass == .regular ? 4 : 2),
                         spacing: 16
                     ) {
                         ForEach(viewModel.filteredAudiobooks) { audiobook in
@@ -199,7 +200,7 @@ struct AudiobooksView: View {
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.bottom, playerManager.hasActiveSession ? 80 : 16)
+                    .padding(.bottom, (playerManager.hasActiveSession && horizontalSizeClass != .regular) ? 80 : 16)
                 }
             }
             .refreshable {
@@ -330,7 +331,7 @@ struct AudiobookGridCell: View {
             // Cover art with status overlays
             ZStack {
                 coverImage
-                    .frame(height: 200)
+                    .aspectRatio(1, contentMode: .fill)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 
                 // Not on server indicator (top-left)

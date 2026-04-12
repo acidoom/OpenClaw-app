@@ -12,6 +12,8 @@ struct ZoteroLibraryView: View {
     @State private var showingSettings = false
     @State private var selectedItem: ZoteroItem?
     @State private var showingAddItem = false
+    @State private var showingPaperAudioJobs = false
+    @State private var paperAudioItem: ZoteroItem?
     
     var body: some View {
         NavigationStack {
@@ -53,6 +55,12 @@ struct ZoteroLibraryView: View {
                         }
                         
                         if viewModel.isConfigured {
+                            Button {
+                                showingPaperAudioJobs = true
+                            } label: {
+                                Label("Paper Audio", systemImage: "waveform.circle")
+                            }
+                            
                             Button {
                                 Task { await viewModel.refresh() }
                             } label: {
@@ -103,6 +111,12 @@ struct ZoteroLibraryView: View {
                 ZoteroAddItemView { _ in
                     Task { await viewModel.refresh() }
                 }
+            }
+            .sheet(isPresented: $showingPaperAudioJobs) {
+                PaperAudioJobsView()
+            }
+            .sheet(item: $paperAudioItem) { item in
+                GeneratePaperAudioSheet(item: item)
             }
             .task {
                 await viewModel.loadIfNeeded()
@@ -300,6 +314,21 @@ struct ZoteroLibraryView: View {
                     .contentShape(Rectangle())
                     .onTapGesture {
                         selectedItem = item
+                    }
+                    .contextMenu {
+                        Button {
+                            paperAudioItem = item
+                        } label: {
+                            Label("Generate Audiobook", systemImage: "waveform.circle")
+                        }
+                    }
+                    .swipeActions(edge: .leading) {
+                        Button {
+                            paperAudioItem = item
+                        } label: {
+                            Label("Audio", systemImage: "waveform.circle")
+                        }
+                        .tint(Color.anthropicCoral)
                     }
             }
         }
