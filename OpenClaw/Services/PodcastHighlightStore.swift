@@ -43,7 +43,7 @@ actor PodcastHighlightStore {
     
     func loadHighlights(for episodeId: String) -> [PodcastHighlight] {
         if let cached = cache[episodeId] { return cached }
-        
+
         let url = fileURL(for: episodeId)
         guard let data = try? Data(contentsOf: url),
               let highlights = try? decoder.decode([PodcastHighlight].self, from: data) else {
@@ -51,6 +51,21 @@ actor PodcastHighlightStore {
         }
         cache[episodeId] = highlights
         return highlights
+    }
+
+    /// Loads highlights across every episode (reads all persisted files).
+    func loadAllHighlights() -> [PodcastHighlight] {
+        guard let files = try? fileManager.contentsOfDirectory(
+            at: highlightsDirectory,
+            includingPropertiesForKeys: nil
+        ) else { return [] }
+
+        var all: [PodcastHighlight] = []
+        for url in files where url.pathExtension == "json" {
+            let episodeId = url.deletingPathExtension().lastPathComponent
+            all.append(contentsOf: loadHighlights(for: episodeId))
+        }
+        return all
     }
     
     // MARK: - Write

@@ -24,7 +24,43 @@ final class PodcastBooksViewModel: ObservableObject {
 
     func load() async {
         isLoading = true
-        books = await PodcastBookStore.shared.recentBooks(withinDays: windowDays)
+
+        let cutoff = Date().addingTimeInterval(-Double(windowDays) * 86_400)
+
+        // Source 1: the dedicated book store (episode scans + highlight extraction).
+        let stored = await PodcastBookStore.shared.recentBooks(withinDays: windowDays)
+
+        // Source 2: books surfaced by previously-saved highlights (durable, pre-dates
+        // the book store), so books discovered before this feature still appear.
+        let highlightBooks: [CollectedPodcastBook] = await PodcastHighlightStore.shared
+            .loadAllHighlights()
+            .filter { $0.status == .completed && $0.createdAt >= cutoff }
+            .flatMap { highlight in
+                (highlight.references ?? [])
+                    .filter { $0.type == .book }
+                    .map {
+                        CollectedPodcastBook(
+                            reference: $0,
+                            episodeId: highlight.episodeId,
+                            episodeTitle: highlight.episodeTitle,
+                            podcastId: highlight.podcastId,
+                            podcastTitle: nil,
+                            collectedAt: highlight.createdAt
+                        )
+                    }
+            }
+
+        // Merge, de-duplicate by book identity (keep the most recent mention).
+        var byBook: [String: CollectedPodcastBook] = [:]
+        for book in stored + highlightBooks {
+            let key = book.reference.id
+            if let existing = byBook[key], existing.collectedAt >= book.collectedAt {
+                continue
+            }
+            byBook[key] = book
+        }
+        books = byBook.values.sorted { $0.collectedAt > $1.collectedAt }
+
         isLoading = false
     }
 }
