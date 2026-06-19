@@ -1004,6 +1004,16 @@ The Zotero integration includes a full PDF viewer for reading papers directly in
 
 OpenClaw includes a full podcast player with subscription management, direct CDN streaming, and AI-powered highlights.
 
+<p align="center">
+  <img src="Gateway/screenshots/podcast-references.png" alt="Episode references with Libro.fm books" width="300"/>
+  &nbsp;&nbsp;
+  <img src="Gateway/screenshots/podcast-books-mentioned.png" alt="Books Mentioned digest" width="300"/>
+</p>
+
+<p align="center">
+  <em>Left: books referenced in an episode's transcript, matched to Libro.fm. Right: the cross-podcast "Books Mentioned" digest for the last 90 days.</em>
+</p>
+
 ### Features
 
 - **Podcast Discovery** - Search Apple Podcasts catalog to find and subscribe to podcasts
