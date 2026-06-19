@@ -398,6 +398,54 @@ List purchased Libro.fm audiobooks available for download.
 
 ---
 
+### 11b. GET /api/libro/search
+
+Search the Libro.fm **catalog** (not just the user's purchases) for books matching a
+free-text query. Used by the iOS client to enrich book references that are extracted
+from podcast transcripts — when a podcast mentions a book, the app searches here and
+attaches the cover, price, and product link to the episode's references.
+
+**Query parameters:**
+
+- `q` — Free-text search string (title and/or author), URL-encoded. Required.
+
+**Request**
+
+```
+GET /api/libro/search?q=Project%20Hail%20Mary%20Andy%20Weir
+```
+
+**Response** `200 OK`
+
+```json
+[
+  {
+    "id": "9781250294852",
+    "title": "Project Hail Mary",
+    "author": "Andy Weir",
+    "cover_url": "https://libro.fm/covers/9781250294852.jpg",
+    "url": "https://libro.fm/audiobooks/9781250294852-project-hail-mary",
+    "price": "$14.99",
+    "isbn": "9781250294852"
+  }
+]
+```
+
+**Notes:**
+- Results should be ordered by relevance (best title/author match first). The iOS client
+  takes the closest title match and falls back to the first result.
+- `author`, `cover_url`, `url`, `price`, `isbn` — all nullable.
+- `cover_url` / `url` — Absolute `https://` URLs on Libro.fm's domain/CDN.
+- `price` — Pre-formatted display string including currency symbol. Nullable.
+- Return an empty array `[]` for no matches. The iOS client falls back to a
+  `https://libro.fm/search?q=…` deep link when the array is empty.
+- Implementation can call Libro.fm's public search/API or scrape the search results page.
+
+**Priority:** Should have. Without it, extracted book references still render with a
+Libro.fm search deep link, just without cover/price.
+
+---
+
 ### 12. POST /api/libro/download/{book_id}
 
 Start downloading a Libro.fm book to the server.
@@ -478,6 +526,7 @@ List all download jobs and their statuses.
 | **Should have** | `POST` | `/api/libro/auth` | Libro.fm login |
 | **Should have** | `DELETE` | `/api/libro/auth` | Libro.fm logout |
 | **Should have** | `GET` | `/api/libro/books` | Browse Libro.fm purchases |
+| **Should have** | `GET` | `/api/libro/search` | Catalog search for transcript book references |
 | **Should have** | `POST` | `/api/libro/download/{id}` | Start downloading a book |
 | **Should have** | `GET` | `/api/libro/downloads` | Track download progress |
 | Nice to have | `GET` | `/api/library/{id}` | Single book detail |
