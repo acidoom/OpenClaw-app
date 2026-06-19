@@ -1017,6 +1017,7 @@ OpenClaw includes a full podcast player with subscription management, direct CDN
 - **AI Highlights** - Bookmark moments during playback, get AI-generated summaries of the surrounding transcript
 - **Reference Extraction** - Backend automatically extracts papers, books, tools, and people mentioned in highlights
 - **Libro.fm Book Matching** - Books mentioned in an episode's transcript are detected and matched against the [Libro.fm](https://libro.fm) catalog, showing cover art and a tappable link to the audiobook
+- **Books Mentioned Digest** - A dedicated view aggregating every book referenced across your podcasts over the last 90 days, with covers and Libro.fm links
 
 ### AI Highlights with References
 
@@ -1039,6 +1040,15 @@ When an episode is transcribed, OpenClaw scans the transcript for books and link
 5. **Fallback** - If the catalog search returns nothing, the reference falls back to a `libro.fm/search?q=…` link
 
 The backend search endpoint is specified in [Gateway/LIBRO_SEARCH_API.md](Gateway/LIBRO_SEARCH_API.md). Books render without a price tag — Libro.fm exposes no flat price on search results.
+
+### Books Mentioned Digest
+
+A dedicated **Books Mentioned** view (Podcasts tab → toolbar **⋯** menu → "Books Mentioned") collects every book referenced across your podcasts within a rolling 90-day window — deduplicated per book, most recent first, each with cover art, source podcast, and a tappable Libro.fm link.
+
+- **Sources** - Books are aggregated from the episode transcript scans and per-bookmark highlight extraction, persisted locally in `PodcastBookStore`
+- **Backfill** - On open, the digest finds transcribed episodes that haven't been scanned yet and scans them (up to 25 per pass), showing a "Scanning episodes for books… N of M" indicator, so previously-listened episodes surface their books without reopening each one
+- **Scan tracking** - Scanned episode IDs are recorded so the AI isn't re-run on episodes already processed (including ones with no books)
+- **Window** - "Last 90 days" is measured by when each book was discovered/collected
 
 ### Backend Setup
 
