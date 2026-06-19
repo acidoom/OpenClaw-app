@@ -165,6 +165,7 @@ actor PodcastHighlightManager {
         let text = transcript.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             episodeBookCache[episodeId] = []
+            await PodcastBookStore.shared.markScanned(episodeId)
             return []
         }
 
@@ -180,6 +181,7 @@ actor PodcastHighlightManager {
             podcastTitle: podcastTitle,
             collectedAt: Date()
         )
+        await PodcastBookStore.shared.markScanned(episodeId)
         return books
     }
 

@@ -14,9 +14,15 @@ import Combine
 final class PodcastBooksViewModel: ObservableObject {
     @Published var books: [CollectedPodcastBook] = []
     @Published var isLoading = false
+    @Published var isScanning = false
+    @Published var scanProgress: String?
 
     /// Rolling window for "recently mentioned" books.
     let windowDays: Int
+    /// Cap on how many transcribed episodes the backfill will scan in one pass.
+    private let backfillLimit = 25
+
+    private let service = PodcastService.shared
 
     init(windowDays: Int = 90) {
         self.windowDays = windowDays
@@ -24,7 +30,13 @@ final class PodcastBooksViewModel: ObservableObject {
 
     func load() async {
         isLoading = true
+        await reloadFromStores()
+        isLoading = false
+        await backfillTranscribedEpisodes()
+    }
 
+    /// Aggregates books from the dedicated book store plus previously-saved highlights.
+    private func reloadFromStores() async {
         let cutoff = Date().addingTimeInterval(-Double(windowDays) * 86_400)
 
         // Source 1: the dedicated book store (episode scans + highlight extraction).
@@ -60,8 +72,46 @@ final class PodcastBooksViewModel: ObservableObject {
             byBook[key] = book
         }
         books = byBook.values.sorted { $0.collectedAt > $1.collectedAt }
+    }
 
-        isLoading = false
+    /// Scans transcribed episodes that haven't been scanned yet so books surface in the
+    /// digest without having to open each episode manually.
+    private func backfillTranscribedEpisodes() async {
+        guard service.isConfigured else { return }
+
+        let episodes: [PodcastEpisode]
+        do {
+            episodes = try await service.fetchLatestEpisodes(limit: 100)
+        } catch {
+            print("[PodcastBooksVM] Backfill: failed to load episodes: \(error)")
+            return
+        }
+
+        let alreadyScanned = await PodcastBookStore.shared.scannedEpisodeIds()
+        let pending = episodes
+            .filter { $0.isTranscribed && !alreadyScanned.contains($0.id) }
+            .prefix(backfillLimit)
+
+        guard !pending.isEmpty else { return }
+
+        isScanning = true
+        defer {
+            isScanning = false
+            scanProgress = nil
+        }
+
+        let total = pending.count
+        for (index, episode) in pending.enumerated() {
+            scanProgress = "Scanning episodes for books… \(index + 1) of \(total)"
+            _ = try? await PodcastHighlightManager.shared.scanEpisodeForBooks(
+                episodeId: episode.id,
+                episodeTitle: episode.title,
+                podcastId: episode.podcastId,
+                podcastTitle: nil,
+                durationSeconds: episode.durationSeconds
+            )
+            await reloadFromStores()
+        }
     }
 }
 
@@ -79,7 +129,11 @@ struct PodcastBooksView: View {
                 if viewModel.isLoading && viewModel.books.isEmpty {
                     loadingView
                 } else if viewModel.books.isEmpty {
-                    emptyView
+                    if viewModel.isScanning {
+                        scanningView
+                    } else {
+                        emptyView
+                    }
                 } else {
                     booksList
                 }
@@ -112,6 +166,20 @@ struct PodcastBooksView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 12)
 
+                if viewModel.isScanning, let progress = viewModel.scanProgress {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .tint(Color.anthropicCoral)
+                            .scaleEffect(0.7)
+                        Text(progress)
+                            .font(.caption)
+                            .foregroundStyle(Color.textSecondary)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                }
+
                 LazyVStack(spacing: 0) {
                     ForEach(viewModel.books) { book in
                         PodcastBookRow(book: book)
@@ -128,6 +196,19 @@ struct PodcastBooksView: View {
     }
 
     // MARK: - Loading / Empty
+
+    private var scanningView: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .tint(Color.anthropicCoral)
+                .scaleEffect(1.2)
+            Text(viewModel.scanProgress ?? "Scanning episodes for books…")
+                .font(.subheadline)
+                .foregroundStyle(Color.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+        }
+    }
 
     private var loadingView: some View {
         VStack(spacing: 16) {
