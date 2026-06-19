@@ -121,6 +121,40 @@ actor PodcastHighlightManager {
         return updated
     }
 
+    // MARK: - Episode-Level Book Scan
+
+    /// In-session cache of books found per episode, keyed by episodeId.
+    private var episodeBookCache: [String: [PodcastReference]] = [:]
+
+    /// Scans an episode's full transcript for referenced books and matches them to
+    /// Libro.fm. Returns the books found (possibly empty). Cached per session.
+    /// Throws if the transcript can't be fetched, so callers can distinguish
+    /// "no books" from "couldn't analyze".
+    func scanEpisodeForBooks(episodeId: String, durationSeconds: Double?) async throws -> [PodcastReference] {
+        if let cached = episodeBookCache[episodeId] {
+            return cached
+        }
+
+        // Fetch the whole transcript (start at 0, end at duration or a generous cap).
+        let endSeconds = (durationSeconds.map { $0 + 60 }) ?? 86_400
+        let transcript = try await podcastService.fetchTranscript(
+            episodeId: episodeId,
+            startSeconds: 0,
+            endSeconds: endSeconds
+        )
+
+        let text = transcript.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            episodeBookCache[episodeId] = []
+            return []
+        }
+
+        let books = await extractBookReferences(from: text) ?? []
+        episodeBookCache[episodeId] = books
+        print("[PodcastHighlight] Episode \(episodeId) scan found \(books.count) book(s)")
+        return books
+    }
+
     // MARK: - Book Reference Extraction
 
     private struct ExtractedBook: Codable {

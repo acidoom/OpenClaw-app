@@ -326,20 +326,26 @@ curl -s -A "$BROWSER_UA" "https://libro.fm/search?q=Project+Hail+Mary" \
 
 ## How the iOS Client Uses This
 
-For reference, the client-side flow (already implemented):
+For reference, the client-side flow (already implemented). Books are extracted in two
+places, both feeding the same endpoint:
 
-1. `PodcastHighlightManager.processHighlightAI` fetches the transcript window and
-   generates the highlight summary.
-2. A second AI call extracts mentioned books as JSON
-   `[{ "title", "authors", "context" }]`.
-3. For each book, the client calls
+- **Episode-level scan** — when an episode is transcribed,
+  `PodcastHighlightManager.scanEpisodeForBooks` fetches the full transcript and extracts
+  books. This drives the episode's "References" section (or a "No books were mentioned in
+  this episode." note when empty).
+- **Per-highlight** — `processHighlightAI` additionally extracts books from each
+  bookmarked moment's 5-minute window.
+
+For each extracted book the flow is:
+
+1. An AI call extracts mentioned books as JSON `[{ "title", "authors", "context" }]`.
+2. For each book the client calls
    `LibroAIService.searchLibroFm(query: "<title> <authors>")` → `GET /api/libro/search`.
-4. The client picks the best match (see *Ordering & Matching*) and builds a
+3. The client picks the best match (see *Ordering & Matching*) and builds a
    `PodcastReference(type: .book, title, authors, url, description: context, coverUrl,
    price)`.
-5. The reference is stored on the highlight and rendered in the episode's
-   "References" section with cover + price + a tappable Libro.fm link. If the array is
-   empty, it falls back to a `libro.fm/search?q=…` link.
+4. References render in the episode's "References" section with cover + a tappable
+   Libro.fm link. If search returns `[]`, it falls back to a `libro.fm/search?q=…` link.
 
 ---
 

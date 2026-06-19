@@ -17,7 +17,18 @@ struct EpisodeDetailView: View {
     @State private var isRequestingTranscription = false
     @State private var transcriptionError: String?
     @State private var transcriptionPollTask: Task<Void, Never>?
-    
+
+    // Episode-level book scan (runs once the episode is transcribed)
+    @State private var scannedBooks: [PodcastReference] = []
+    @State private var bookScanState: BookScanState = .idle
+
+    private enum BookScanState: Equatable {
+        case idle
+        case scanning
+        case done
+        case failed
+    }
+
     init(episode: PodcastEpisode, podcast: Podcast) {
         self._episode = State(initialValue: episode)
         self.podcast = podcast
@@ -31,19 +42,15 @@ struct EpisodeDetailView: View {
         playerManager.currentPodcastEpisode?.id == episode.id
     }
     
-    /// All unique references aggregated from completed highlights
+    /// All unique book references: the episode-level transcript scan plus anything
+    /// surfaced by individual highlights, de-duplicated.
     private var allReferences: [PodcastReference] {
         var seen = Set<String>()
-        return highlightsViewModel.highlights
+        let highlightRefs = highlightsViewModel.highlights
             .filter { $0.status == .completed }
             .flatMap { $0.references ?? [] }
+        return (scannedBooks + highlightRefs)
             .filter { seen.insert($0.id).inserted }
-    }
-
-    /// Whether at least one highlight has finished AI processing. Used to distinguish
-    /// "no books mentioned" from "nothing analyzed yet".
-    private var hasCompletedHighlights: Bool {
-        highlightsViewModel.highlights.contains { $0.status == .completed }
     }
     
     var body: some View {
@@ -62,10 +69,12 @@ struct EpisodeDetailView: View {
                         // Transcription status
                         transcriptionSection
                         
-                        // References (aggregated from highlights)
+                        // Books referenced in the transcript
                         if !allReferences.isEmpty {
                             referencesSection
-                        } else if hasCompletedHighlights {
+                        } else if bookScanState == .scanning {
+                            bookScanningNote
+                        } else if bookScanState == .done {
                             noBooksNote
                         }
                         
@@ -107,6 +116,8 @@ struct EpisodeDetailView: View {
             if episode.transcriptionStatus == .queued || episode.transcriptionStatus == .processing {
                 startTranscriptionPolling()
             }
+            // Scan the transcript for books as soon as the episode is transcribed
+            startBookScan()
         }
         .onDisappear {
             transcriptionPollTask?.cancel()
@@ -341,14 +352,33 @@ struct EpisodeDetailView: View {
     
     // MARK: - No Books Note
 
-    /// Shown when bookmarked moments have been analyzed but no book was referenced.
+    /// Shown while the transcript is being scanned for book references.
+    private var bookScanningNote: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .tint(Color.anthropicCoral)
+                .scaleEffect(0.7)
+
+            Text("Scanning transcript for books…")
+                .font(.caption)
+                .foregroundStyle(Color.textSecondary)
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.surfaceSecondary.opacity(0.3), in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 16)
+    }
+
+    /// Shown when the transcript was scanned and no book was referenced.
     private var noBooksNote: some View {
         HStack(spacing: 8) {
             Image(systemName: "book.closed")
                 .font(.caption)
                 .foregroundStyle(Color.textTertiary)
 
-            Text("No books were mentioned in the bookmarked moments.")
+            Text("No books were mentioned in this episode.")
                 .font(.caption)
                 .foregroundStyle(Color.textTertiary)
 
@@ -361,6 +391,27 @@ struct EpisodeDetailView: View {
     }
 
     // MARK: - Actions
+
+    /// Kicks off the transcript book scan once, when the episode is transcribed.
+    private func startBookScan() {
+        guard episode.isTranscribed, bookScanState == .idle else { return }
+        bookScanState = .scanning
+        Task {
+            do {
+                let books = try await PodcastHighlightManager.shared.scanEpisodeForBooks(
+                    episodeId: episode.id,
+                    durationSeconds: episode.durationSeconds
+                )
+                await MainActor.run {
+                    scannedBooks = books
+                    bookScanState = .done
+                }
+            } catch {
+                print("[EpisodeDetail] Book scan failed: \(error)")
+                await MainActor.run { bookScanState = .failed }
+            }
+        }
+    }
 
     private func requestTranscription() {
         isRequestingTranscription = true
@@ -396,6 +447,10 @@ struct EpisodeDetailView: View {
                     
                     // Stop polling once terminal state
                     if updated.transcriptionStatus == .completed || updated.transcriptionStatus == .failed {
+                        // Newly transcribed → scan the transcript for books
+                        if updated.transcriptionStatus == .completed {
+                            startBookScan()
+                        }
                         break
                     }
                 }
