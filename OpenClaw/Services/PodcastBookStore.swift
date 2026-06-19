@@ -14,14 +14,18 @@ actor PodcastBookStore {
 
     private let fileManager = FileManager.default
 
-    private var fileURL: URL {
+    private var directory: URL {
         let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let dir = docs.appendingPathComponent("PodcastBooks", isDirectory: true)
         try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("collected.json")
+        return dir
     }
 
+    private var fileURL: URL { directory.appendingPathComponent("collected.json") }
+    private var scannedURL: URL { directory.appendingPathComponent("scanned.json") }
+
     private var cache: [CollectedPodcastBook]?
+    private var scannedCache: Set<String>?
 
     private lazy var encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -66,6 +70,31 @@ actor PodcastBookStore {
             byBook[key] = book
         }
         return byBook.values.sorted { $0.collectedAt > $1.collectedAt }
+    }
+
+    // MARK: - Scanned episodes
+
+    /// Episode IDs that have already been scanned for books (regardless of whether any
+    /// were found), so backfill doesn't re-run the AI on them.
+    func scannedEpisodeIds() -> Set<String> {
+        if let scannedCache { return scannedCache }
+        guard let data = try? Data(contentsOf: scannedURL),
+              let ids = try? decoder.decode([String].self, from: data) else {
+            scannedCache = []
+            return []
+        }
+        let set = Set(ids)
+        scannedCache = set
+        return set
+    }
+
+    func markScanned(_ episodeId: String) {
+        var set = scannedEpisodeIds()
+        guard set.insert(episodeId).inserted else { return }
+        scannedCache = set
+        if let data = try? encoder.encode(Array(set)) {
+            try? data.write(to: scannedURL, options: .atomic)
+        }
     }
 
     // MARK: - Write
