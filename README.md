@@ -186,6 +186,7 @@ Gateway/                              # OpenClaw Gateway Plugin
 ├── PODCAST_API.md                    # Podcast backend API specification
 ├── PAPER_AUDIO_API.md                # Paper audio backend API specification
 ├── LIBROAI_API.md                    # Audiobook backend API specification
+├── LIBRO_SEARCH_API.md               # Libro.fm catalog search spec (podcast book references)
 └── BACKEND_CORRECTIONS.md            # Backend bug reports and new endpoint specs
 ```
 
@@ -873,6 +874,7 @@ The audiobook feature requires a backend server providing several API endpoints.
 | POST | `/api/libro/auth` | Login to Libro.fm |
 | DELETE | `/api/libro/auth` | Disconnect Libro.fm |
 | GET | `/api/libro/books` | Browse Libro.fm purchases |
+| GET | `/api/libro/search` | Search the Libro.fm catalog (used for podcast book references) |
 | POST | `/api/libro/download/{id}` | Download a book to server |
 | GET | `/api/libro/downloads` | Track download progress |
 
@@ -1014,6 +1016,7 @@ OpenClaw includes a full podcast player with subscription management, direct CDN
 - **On-Demand Transcription** - Request Whisper transcription for individual episodes
 - **AI Highlights** - Bookmark moments during playback, get AI-generated summaries of the surrounding transcript
 - **Reference Extraction** - Backend automatically extracts papers, books, tools, and people mentioned in highlights
+- **Libro.fm Book Matching** - Books mentioned in an episode's transcript are detected and matched against the [Libro.fm](https://libro.fm) catalog, showing cover art and a tappable link to the audiobook
 
 ### AI Highlights with References
 
@@ -1024,6 +1027,18 @@ The podcast highlight system extends the audiobook highlight pattern with automa
 3. **Summarize** - AI generates a 2-3 sentence summary of the passage
 4. **Extract** - Backend asynchronously extracts referenced papers, books, tools, and people from the transcript
 5. **Display** - Highlights shown with expandable reference cards
+
+### Libro.fm Book References
+
+When an episode is transcribed, OpenClaw scans the transcript for books and links them to the Libro.fm catalog so you can jump straight to the audiobook:
+
+1. **Scan** - As soon as an episode is transcribed, the full transcript is scanned for mentioned books (per-bookmark moments are also scanned)
+2. **Search** - Each detected book is looked up in the Libro.fm catalog via `GET /api/libro/search`
+3. **Match** - The closest catalog result supplies the cover art and a link to the Libro.fm product page
+4. **Display** - Matched books appear in the episode's **References** section. While scanning, a "Scanning transcript for books…" indicator is shown; if nothing is found, a "No books were mentioned in this episode." note is shown instead
+5. **Fallback** - If the catalog search returns nothing, the reference falls back to a `libro.fm/search?q=…` link
+
+The backend search endpoint is specified in [Gateway/LIBRO_SEARCH_API.md](Gateway/LIBRO_SEARCH_API.md). Books render without a price tag — Libro.fm exposes no flat price on search results.
 
 ### Backend Setup
 
