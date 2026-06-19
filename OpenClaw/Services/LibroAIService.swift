@@ -264,7 +264,7 @@ actor LibroAIService {
         guard let endpoint = try? keychain.get(.openClawEndpoint), !endpoint.isEmpty else {
             throw LibroAIServiceError.notConfigured
         }
-        
+
         // Use only the scheme + host + port from the endpoint (strip any path like /todo)
         let base: String
         if let components = URLComponents(string: endpoint),
@@ -275,7 +275,7 @@ actor LibroAIService {
         } else {
             base = endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         }
-        
+
         guard let url = URL(string: "\(base)/api/stream/\(audiobookId)") else {
             throw LibroAIServiceError.invalidURL
         }
@@ -334,6 +334,22 @@ actor LibroAIService {
         }
     }
     
+    /// Searches the Libro.fm catalog for books matching a free-text query.
+    /// Used to enrich book references extracted from podcast transcripts.
+    func searchLibroFm(query: String) async throws -> [LibroFmSearchResult] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        let (data, _) = try await makeRequest(
+            path: "/api/libro/search",
+            queryItems: [URLQueryItem(name: "q", value: trimmed)]
+        )
+        do {
+            return try decoder.decode([LibroFmSearchResult].self, from: data)
+        } catch {
+            throw LibroAIServiceError.decodingError(error)
+        }
+    }
+
     func startDownload(libroFmBookId: String) async throws -> DownloadStartResponse {
         let (data, _) = try await makeRequest(method: "POST", path: "/api/libro/download/\(libroFmBookId)")
         do {

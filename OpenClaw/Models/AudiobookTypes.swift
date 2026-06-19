@@ -151,6 +151,24 @@ struct LibroFmBook: Codable, Identifiable, Equatable {
     }
 }
 
+/// A result from the Libro.fm catalog search endpoint (`/api/libro/search`)
+struct LibroFmSearchResult: Codable, Identifiable, Equatable {
+    let id: String
+    let title: String
+    let author: String?
+    let coverUrl: String?
+    /// Absolute URL to the book's Libro.fm product page
+    let url: String?
+    /// Display price string, e.g. "$14.99". Nullable
+    let price: String?
+    let isbn: String?
+
+    func coverImageURL() -> URL? {
+        guard let coverUrl, !coverUrl.isEmpty else { return nil }
+        return URL(string: coverUrl)
+    }
+}
+
 struct DownloadJob: Codable, Identifiable, Equatable {
     let id: String
     let bookId: String

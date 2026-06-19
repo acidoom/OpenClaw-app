@@ -394,34 +394,54 @@ struct EpisodeReferenceCard: View {
     
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: reference.type.icon)
-                .font(.subheadline)
-                .foregroundStyle(Color.anthropicCoral)
-                .frame(width: 24, height: 24)
-                .background(Color.anthropicCoral.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
-            
+            // Libro.fm cover when matched, otherwise a type icon
+            if let coverString = reference.coverUrl, let coverURL = URL(string: coverString) {
+                AsyncImage(url: coverURL) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.surfaceSecondary)
+                }
+                .frame(width: 36, height: 52)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+            } else {
+                Image(systemName: reference.type.icon)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.anthropicCoral)
+                    .frame(width: 24, height: 24)
+                    .background(Color.anthropicCoral.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+            }
+
             VStack(alignment: .leading, spacing: 3) {
                 Text(reference.title)
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundStyle(Color.textPrimary)
-                
+
                 if let authors = reference.authors, !authors.isEmpty {
                     Text(authors)
                         .font(.caption)
                         .foregroundStyle(Color.textSecondary)
                 }
-                
+
                 if let description = reference.description, !description.isEmpty {
                     Text(description)
                         .font(.caption)
                         .foregroundStyle(Color.textTertiary)
                         .lineLimit(3)
                 }
+
+                if let price = reference.price, !price.isEmpty {
+                    Text("Libro.fm · \(price)")
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .foregroundStyle(Color.anthropicCoral)
+                        .padding(.top, 1)
+                }
             }
-            
+
             Spacer(minLength: 0)
-            
+
             if let urlString = reference.url, let url = URL(string: urlString) {
                 Button {
                     openURL(url)

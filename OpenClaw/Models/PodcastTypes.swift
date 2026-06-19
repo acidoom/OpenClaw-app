@@ -162,7 +162,11 @@ struct PodcastReference: Codable, Identifiable, Equatable {
     let authors: String?
     let url: String?
     let description: String?
-    
+    /// Cover image URL (absolute) when matched to a Libro.fm catalog result
+    var coverUrl: String? = nil
+    /// Display price (e.g. "$14.99") when matched to a Libro.fm catalog result
+    var price: String? = nil
+
     var id: String { "\(type.rawValue):\(title)" }
 }
 

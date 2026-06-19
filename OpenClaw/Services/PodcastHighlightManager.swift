@@ -94,11 +94,15 @@ actor PodcastHighlightManager {
             """
             
             let aiResponse = try await chatService.sendMessage(prompt)
-            
+
             updated.highlightText = aiResponse.content
+
+            // Extract any books referenced in the passage and match them to Libro.fm
+            updated.references = await extractBookReferences(from: transcript.fullText)
+
             updated.status = .completed
-            
-            print("[PodcastHighlight] AI summary generated for \(highlight.id)")
+
+            print("[PodcastHighlight] AI summary generated for \(highlight.id), \(updated.references?.count ?? 0) book reference(s)")
             
         } catch let error as PodcastServiceError {
             if case .httpError(404, _) = error {
@@ -116,7 +120,120 @@ actor PodcastHighlightManager {
         await store.saveHighlight(updated)
         return updated
     }
-    
+
+    // MARK: - Book Reference Extraction
+
+    private struct ExtractedBook: Codable {
+        let title: String
+        let authors: String?
+        let context: String?
+    }
+
+    /// Asks the AI to identify any books mentioned in the transcript excerpt, then
+    /// enriches each one with a Libro.fm catalog match (cover, price, product link).
+    private func extractBookReferences(from transcript: String) async -> [PodcastReference]? {
+        let extractPrompt = """
+        Identify books that are explicitly mentioned or recommended in the following \
+        podcast transcript excerpt. Only include real, published books — not articles, \
+        papers, websites, or offhand phrases. For each book provide its title, the \
+        author(s) if stated, and a brief one-sentence note on how it came up.
+
+        Respond with ONLY a JSON array (no markdown, no commentary). Use this exact shape:
+        [{"title": "Book Title", "authors": "Author Name", "context": "why it was mentioned"}]
+        If no books are mentioned, respond with an empty array: []
+
+        Transcript excerpt:
+        \(transcript)
+        """
+
+        let extracted: [ExtractedBook]
+        do {
+            let response = try await chatService.sendMessage(extractPrompt)
+            extracted = parseExtractedBooks(from: response.content)
+        } catch {
+            print("[PodcastHighlight] Book extraction failed: \(error)")
+            return nil
+        }
+
+        guard !extracted.isEmpty else { return nil }
+
+        var references: [PodcastReference] = []
+        for book in extracted {
+            references.append(await makeReference(for: book))
+        }
+        return references.isEmpty ? nil : references
+    }
+
+    /// Builds a PodcastReference for an extracted book, attaching Libro.fm match data when found.
+    private func makeReference(for book: ExtractedBook) async -> PodcastReference {
+        let query = [book.title, book.authors].compactMap { $0 }.joined(separator: " ")
+        var match: LibroFmSearchResult?
+        do {
+            let results = try await LibroAIService.shared.searchLibroFm(query: query)
+            match = bestMatch(for: book, in: results)
+        } catch {
+            print("[PodcastHighlight] Libro.fm search failed for \"\(book.title)\": \(error)")
+        }
+
+        return PodcastReference(
+            type: .book,
+            title: match?.title ?? book.title,
+            authors: match?.author ?? book.authors,
+            url: match?.url ?? libroFmSearchURL(for: query),
+            description: book.context,
+            coverUrl: match?.coverUrl,
+            price: match?.price
+        )
+    }
+
+    /// Picks the best Libro.fm result, preferring a case-insensitive title match.
+    private func bestMatch(for book: ExtractedBook, in results: [LibroFmSearchResult]) -> LibroFmSearchResult? {
+        guard !results.isEmpty else { return nil }
+        let target = book.title.lowercased()
+        if let exact = results.first(where: { $0.title.lowercased() == target }) {
+            return exact
+        }
+        if let partial = results.first(where: {
+            $0.title.lowercased().contains(target) || target.contains($0.title.lowercased())
+        }) {
+            return partial
+        }
+        return results.first
+    }
+
+    /// Fallback Libro.fm search deep link used when no catalog match is found.
+    private func libroFmSearchURL(for query: String) -> String? {
+        guard var components = URLComponents(string: "https://libro.fm/search") else { return nil }
+        components.queryItems = [URLQueryItem(name: "q", value: query)]
+        return components.string
+    }
+
+    /// Robustly parses a JSON array of books from an AI response that may be wrapped
+    /// in markdown code fences or include surrounding prose.
+    private func parseExtractedBooks(from content: String) -> [ExtractedBook] {
+        var text = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Strip markdown code fences if present
+        if text.hasPrefix("```") {
+            text = text.replacingOccurrences(of: "```json", with: "")
+                .replacingOccurrences(of: "```", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // Isolate the JSON array
+        guard let start = text.firstIndex(of: "["),
+              let end = text.lastIndex(of: "]"), start <= end else {
+            return []
+        }
+        let jsonString = String(text[start...end])
+        guard let data = jsonString.data(using: .utf8) else { return [] }
+        do {
+            return try JSONDecoder().decode([ExtractedBook].self, from: data)
+                .filter { !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        } catch {
+            print("[PodcastHighlight] Failed to parse extracted books JSON: \(error)")
+            return []
+        }
+    }
+
     // MARK: - Server Sync
     
     private func syncHighlight(_ highlight: PodcastHighlight) async {
