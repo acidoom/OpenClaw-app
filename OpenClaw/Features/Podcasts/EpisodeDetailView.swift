@@ -39,6 +39,12 @@ struct EpisodeDetailView: View {
             .flatMap { $0.references ?? [] }
             .filter { seen.insert($0.id).inserted }
     }
+
+    /// Whether at least one highlight has finished AI processing. Used to distinguish
+    /// "no books mentioned" from "nothing analyzed yet".
+    private var hasCompletedHighlights: Bool {
+        highlightsViewModel.highlights.contains { $0.status == .completed }
+    }
     
     var body: some View {
         NavigationStack {
@@ -59,6 +65,8 @@ struct EpisodeDetailView: View {
                         // References (aggregated from highlights)
                         if !allReferences.isEmpty {
                             referencesSection
+                        } else if hasCompletedHighlights {
+                            noBooksNote
                         }
                         
                         // Description
@@ -331,8 +339,29 @@ struct EpisodeDetailView: View {
         .padding(.horizontal, 16)
     }
     
+    // MARK: - No Books Note
+
+    /// Shown when bookmarked moments have been analyzed but no book was referenced.
+    private var noBooksNote: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "book.closed")
+                .font(.caption)
+                .foregroundStyle(Color.textTertiary)
+
+            Text("No books were mentioned in the bookmarked moments.")
+                .font(.caption)
+                .foregroundStyle(Color.textTertiary)
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.surfaceSecondary.opacity(0.3), in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 16)
+    }
+
     // MARK: - Actions
-    
+
     private func requestTranscription() {
         isRequestingTranscription = true
         transcriptionError = nil
