@@ -100,6 +100,18 @@ actor PodcastHighlightManager {
             // Extract any books referenced in the passage and match them to Libro.fm
             updated.references = await extractBookReferences(from: transcript.fullText)
 
+            // Persist discovered books for the cross-episode "Books Mentioned" digest
+            if let references = updated.references, !references.isEmpty {
+                await PodcastBookStore.shared.add(
+                    references: references,
+                    episodeId: updated.episodeId,
+                    episodeTitle: updated.episodeTitle,
+                    podcastId: updated.podcastId,
+                    podcastTitle: nil,
+                    collectedAt: updated.createdAt
+                )
+            }
+
             updated.status = .completed
 
             print("[PodcastHighlight] AI summary generated for \(highlight.id), \(updated.references?.count ?? 0) book reference(s)")
@@ -127,10 +139,17 @@ actor PodcastHighlightManager {
     private var episodeBookCache: [String: [PodcastReference]] = [:]
 
     /// Scans an episode's full transcript for referenced books and matches them to
-    /// Libro.fm. Returns the books found (possibly empty). Cached per session.
+    /// Libro.fm. Returns the books found (possibly empty). Cached per session and
+    /// persisted to `PodcastBookStore` for the "Books Mentioned" digest.
     /// Throws if the transcript can't be fetched, so callers can distinguish
     /// "no books" from "couldn't analyze".
-    func scanEpisodeForBooks(episodeId: String, durationSeconds: Double?) async throws -> [PodcastReference] {
+    func scanEpisodeForBooks(
+        episodeId: String,
+        episodeTitle: String? = nil,
+        podcastId: String? = nil,
+        podcastTitle: String? = nil,
+        durationSeconds: Double?
+    ) async throws -> [PodcastReference] {
         if let cached = episodeBookCache[episodeId] {
             return cached
         }
@@ -152,6 +171,15 @@ actor PodcastHighlightManager {
         let books = await extractBookReferences(from: text) ?? []
         episodeBookCache[episodeId] = books
         print("[PodcastHighlight] Episode \(episodeId) scan found \(books.count) book(s)")
+
+        await PodcastBookStore.shared.add(
+            references: books,
+            episodeId: episodeId,
+            episodeTitle: episodeTitle,
+            podcastId: podcastId,
+            podcastTitle: podcastTitle,
+            collectedAt: Date()
+        )
         return books
     }
 

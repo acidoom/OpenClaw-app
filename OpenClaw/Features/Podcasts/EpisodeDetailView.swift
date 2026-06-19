@@ -400,6 +400,9 @@ struct EpisodeDetailView: View {
             do {
                 let books = try await PodcastHighlightManager.shared.scanEpisodeForBooks(
                     episodeId: episode.id,
+                    episodeTitle: episode.title,
+                    podcastId: podcast.id,
+                    podcastTitle: podcast.title,
                     durationSeconds: episode.durationSeconds
                 )
                 await MainActor.run {

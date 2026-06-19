@@ -14,6 +14,7 @@ struct PodcastsView: View {
     @State private var selectedPodcast: Podcast?
     @State private var selectedEpisode: PodcastEpisode?
     @State private var showingSearch = false
+    @State private var showingBooks = false
     
     var body: some View {
         NavigationStack {
@@ -56,7 +57,13 @@ struct PodcastsView: View {
                         } label: {
                             Label("Refresh", systemImage: "arrow.clockwise")
                         }
-                        
+
+                        Button {
+                            showingBooks = true
+                        } label: {
+                            Label("Books Mentioned", systemImage: "books.vertical")
+                        }
+
                         Divider()
                         
                         Menu("Sort By") {
@@ -85,6 +92,9 @@ struct PodcastsView: View {
             }
             .sheet(isPresented: $showingSearch) {
                 PodcastSearchView(viewModel: viewModel)
+            }
+            .sheet(isPresented: $showingBooks) {
+                PodcastBooksView()
             }
             .sheet(item: $selectedEpisode) { episode in
                 if let podcast = viewModel.podcastForEpisode(episode) {
