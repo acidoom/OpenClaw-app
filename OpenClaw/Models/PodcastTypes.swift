@@ -223,6 +223,22 @@ struct PodcastHighlight: Codable, Identifiable, Equatable {
     }
 }
 
+// MARK: - Collected Book (aggregated across episodes)
+
+/// A book reference discovered in a podcast, persisted with its source episode and the
+/// date it was collected. Backs the "Books Mentioned" digest view.
+struct CollectedPodcastBook: Codable, Identifiable, Equatable {
+    let reference: PodcastReference
+    let episodeId: String
+    let episodeTitle: String?
+    let podcastId: String?
+    let podcastTitle: String?
+    let collectedAt: Date
+
+    /// Stable identity: a given book within a given episode.
+    var id: String { "\(episodeId):\(reference.id)" }
+}
+
 // MARK: - Episode Transcript (from Whisper pipeline)
 
 struct EpisodeTranscriptResponse: Codable {
